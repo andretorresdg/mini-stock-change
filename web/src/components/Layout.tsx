@@ -51,6 +51,19 @@ export default function Layout() {
                 Order Status
               </NavLink>
             </li>
+            <li>
+              <NavLink
+                to="/market"
+                style={({ isActive }) => ({
+                  color: isActive ? "#90cdf4" : "#63b3ed",
+                  fontWeight: isActive ? 600 : 400,
+                  borderBottom: isActive ? "2px solid #90cdf4" : "none",
+                  paddingBottom: "2px",
+                })}
+              >
+                Market
+              </NavLink>
+            </li>
           </ul>
         </nav>
       </header>

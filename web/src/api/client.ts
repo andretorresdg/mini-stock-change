@@ -1,4 +1,10 @@
-import type { ApiError, OrderResponse, SubmitOrderRequest } from "./types";
+import type {
+  ApiError,
+  BookSnapshotResponse,
+  MarketTradesResponse,
+  OrderResponse,
+  SubmitOrderRequest,
+} from "./types";
 
 // MVP defaults to local FastAPI.
 // Deployed environments should set VITE_API_BASE_URL
@@ -115,6 +121,24 @@ export async function getOrder(
 ): Promise<OrderResponse> {
   const path = `/api/v1/brokers/${encodeURIComponent(brokerId)}/orders/${encodeURIComponent(orderId)}`;
   return request<OrderResponse>("GET", path);
+}
+
+export async function getBookSnapshot(
+  symbol: string,
+  depth?: number,
+): Promise<BookSnapshotResponse> {
+  const params = depth !== undefined ? `?depth=${depth}` : "";
+  const path = `/api/v1/market/${encodeURIComponent(symbol)}/book${params}`;
+  return request<BookSnapshotResponse>("GET", path);
+}
+
+export async function getMarketTrades(
+  symbol: string,
+  limit?: number,
+): Promise<MarketTradesResponse> {
+  const params = limit !== undefined ? `?limit=${limit}` : "";
+  const path = `/api/v1/market/${encodeURIComponent(symbol)}/trades${params}`;
+  return request<MarketTradesResponse>("GET", path);
 }
 
 export { ApiClientError, BASE_URL };

@@ -50,3 +50,27 @@ export interface ApiError {
   message: string;
   status: number;
 }
+
+export interface BookLevelResponse {
+  price: number;
+  quantity: number;
+}
+
+export interface BookSnapshotResponse {
+  symbol: string;
+  bids: BookLevelResponse[];
+  asks: BookLevelResponse[];
+}
+
+export interface MarketTradeResponse {
+  trade_id: string;
+  sequence: number;
+  symbol: string;
+  price: number;
+  quantity: number;
+}
+
+export interface MarketTradesResponse {
+  symbol: string;
+  trades: MarketTradeResponse[];
+}

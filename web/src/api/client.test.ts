@@ -1,6 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiClientError, BASE_URL, getOrder, submitOrder } from "./client";
-import type { OrderResponse, SubmitOrderRequest } from "./types";
+import {
+  ApiClientError,
+  BASE_URL,
+  getBookSnapshot,
+  getMarketTrades,
+  getOrder,
+  submitOrder,
+} from "./client";
+import type {
+  BookSnapshotResponse,
+  MarketTradesResponse,
+  OrderResponse,
+  SubmitOrderRequest,
+} from "./types";
 
 const BROKER = "broker1";
 const ORDER_ID = "AAPL-O-1";
@@ -257,6 +269,63 @@ describe("error handling — FastAPI validation with empty msg fields", () => {
       (e: unknown) =>
         e instanceof ApiClientError && e.apiError.message === "Validation error",
     );
+  });
+});
+
+describe("getBookSnapshot", () => {
+  const SAMPLE_BOOK: BookSnapshotResponse = {
+    symbol: "AAPL",
+    bids: [{ price: 1000, quantity: 100 }],
+    asks: [{ price: 1100, quantity: 50 }],
+  };
+
+  it("calls GET /api/v1/market/{symbol}/book and returns snapshot", async () => {
+    mockFetch(200, SAMPLE_BOOK);
+
+    const result = await getBookSnapshot("AAPL");
+
+    expect(result).toEqual(SAMPLE_BOOK);
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${BASE_URL}/api/v1/market/AAPL/book`);
+    expect(init.method).toBe("GET");
+  });
+
+  it("appends depth query param when provided", async () => {
+    mockFetch(200, SAMPLE_BOOK);
+
+    await getBookSnapshot("AAPL", 5);
+
+    const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${BASE_URL}/api/v1/market/AAPL/book?depth=5`);
+  });
+});
+
+describe("getMarketTrades", () => {
+  const SAMPLE_TRADES: MarketTradesResponse = {
+    symbol: "AAPL",
+    trades: [
+      { trade_id: "T1", sequence: 1, symbol: "AAPL", price: 1000, quantity: 100 },
+    ],
+  };
+
+  it("calls GET /api/v1/market/{symbol}/trades and returns trades", async () => {
+    mockFetch(200, SAMPLE_TRADES);
+
+    const result = await getMarketTrades("AAPL");
+
+    expect(result).toEqual(SAMPLE_TRADES);
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${BASE_URL}/api/v1/market/AAPL/trades`);
+    expect(init.method).toBe("GET");
+  });
+
+  it("appends limit query param when provided", async () => {
+    mockFetch(200, SAMPLE_TRADES);
+
+    await getMarketTrades("AAPL", 10);
+
+    const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${BASE_URL}/api/v1/market/AAPL/trades?limit=10`);
   });
 });
 

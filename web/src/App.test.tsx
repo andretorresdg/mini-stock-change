@@ -35,6 +35,11 @@ describe("Navigation", () => {
     expect(screen.getByRole("link", { name: "Order Status" })).toBeInTheDocument();
   });
 
+  it("renders Market navigation link", () => {
+    renderAt("/submit-order");
+    expect(screen.getByRole("link", { name: "Market" })).toBeInTheDocument();
+  });
+
   it("has a main content landmark", () => {
     renderAt("/submit-order");
     expect(screen.getByRole("main")).toBeInTheDocument();
@@ -65,6 +70,13 @@ describe("OrderStatusPage", () => {
     expect(
       screen.getByRole("heading", { name: "Order Status" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("MarketPage", () => {
+  it("renders the Market Data heading when navigated to /market", () => {
+    renderAt("/market");
+    expect(screen.getByRole("heading", { name: /market data/i })).toBeInTheDocument();
   });
 });
 
