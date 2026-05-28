@@ -1,15 +1,71 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter, createMemoryRouter, RouterProvider } from "react-router-dom";
 import { describe, it, expect } from "vitest";
-import App from "./App";
+import App from "./app/App";
+import Layout from "./components/Layout";
+import { routes } from "./app/routes";
 
-describe("App", () => {
-  it("renders the Mini Exchange heading", () => {
+function renderAt(path: string) {
+  const router = createMemoryRouter(routes, { initialEntries: [path] });
+  render(<RouterProvider router={router} />);
+}
+
+describe("App (browser router)", () => {
+  it("renders and redirects root to the submit order page", async () => {
     render(<App />);
-    expect(screen.getByRole("heading", { name: "Mini Exchange" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Submit Order" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("Navigation", () => {
+  it("renders navigation links", () => {
+    renderAt("/submit-order");
+    expect(screen.getByRole("link", { name: "Submit Order" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Order Status" })).toBeInTheDocument();
   });
 
-  it("renders the MVP subtitle", () => {
-    render(<App />);
-    expect(screen.getByText("In-memory MVP trading interface")).toBeInTheDocument();
+  it("has a main content landmark", () => {
+    renderAt("/submit-order");
+    expect(screen.getByRole("main")).toBeInTheDocument();
+  });
+});
+
+describe("Root route", () => {
+  it("redirects / to /submit-order and shows the submit order page", () => {
+    renderAt("/");
+    expect(
+      screen.getByRole("heading", { name: "Submit Order" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("SubmitOrderPage", () => {
+  it("renders the Submit Order heading when navigated directly", () => {
+    renderAt("/submit-order");
+    expect(
+      screen.getByRole("heading", { name: "Submit Order" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("OrderStatusPage", () => {
+  it("renders the Order Status heading", () => {
+    renderAt("/status");
+    expect(
+      screen.getByRole("heading", { name: "Order Status" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("Layout standalone", () => {
+  it("renders nav with MemoryRouter", () => {
+    render(
+      <MemoryRouter>
+        <Layout />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
   });
 });
