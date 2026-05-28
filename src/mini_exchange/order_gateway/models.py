@@ -241,6 +241,39 @@ class GatewayOrder:
 
 
 @dataclass(frozen=True, slots=True)
+class GatewayMarketTrade:
+    """Public trade information for the market trades feed.
+
+    # Intentionally omits broker IDs and document numbers to avoid
+    # exposing private order metadata through the public feed.
+    """
+
+    trade_id: str
+    sequence: int
+    symbol: str
+    price: int
+    quantity: int
+
+    def __post_init__(self) -> None:
+        _validate_non_empty(self.trade_id, "trade_id")
+        _validate_positive_int(self.sequence, "sequence")
+        _validate_non_empty(self.symbol, "symbol")
+        _validate_positive_int(self.price, "price")
+        _validate_positive_int(self.quantity, "quantity")
+
+
+@dataclass(frozen=True, slots=True)
+class GatewayMarketTrades:
+    """A list of recent market trades for one symbol."""
+
+    symbol: str
+    trades: tuple[GatewayMarketTrade, ...]
+
+    def __post_init__(self) -> None:
+        _validate_non_empty(self.symbol, "symbol")
+
+
+@dataclass(frozen=True, slots=True)
 class GatewayBookLevel:
     """An aggregated price level in the order book."""
 

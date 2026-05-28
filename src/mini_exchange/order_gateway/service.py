@@ -16,6 +16,8 @@ from mini_exchange.order_gateway.models import (
     ExpireOrderCommand,
     GatewayBookLevel,
     GatewayBookSnapshot,
+    GatewayMarketTrade,
+    GatewayMarketTrades,
     GatewayOrder,
     GatewayOrderStatus,
     GatewaySubmitOrder,
@@ -154,6 +156,29 @@ class OrderGatewayService:
                 msg = "order not found"
                 raise OrderNotFoundError(msg)
             return self._build_order_response(metadata)
+
+    def get_market_trades(self, symbol: str, limit: int = 50) -> GatewayMarketTrades:
+        """Return recent trades for a symbol, newest first.
+
+        # MVP reads recent trades from in-memory state.
+        # Production systems would usually publish trades from
+        # an event/outbox pipeline.
+        """
+        symbol = symbol.strip().upper()
+        with self._lock:
+            self._expire_resting_orders()
+            raw = self._engine.book(symbol).trades
+        recent = tuple(
+            GatewayMarketTrade(
+                trade_id=t.trade_id,
+                sequence=t.sequence,
+                symbol=t.symbol,
+                price=t.price,
+                quantity=t.quantity,
+            )
+            for t in reversed(raw)
+        )[:limit]
+        return GatewayMarketTrades(symbol=symbol, trades=recent)
 
     def get_book_snapshot(
         self, symbol: str, depth: int | None = None

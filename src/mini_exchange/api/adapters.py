@@ -5,12 +5,15 @@ from mini_exchange.api.schemas import (
     ApiOrderStatus,
     BookLevelResponse,
     BookSnapshotResponse,
+    MarketTradeResponse,
+    MarketTradesResponse,
     OrderResponse,
     SubmitOrderRequest,
     TradeResponse,
 )
 from mini_exchange.order_gateway.models import (
     GatewayBookSnapshot,
+    GatewayMarketTrades,
     GatewayOrder,
     GatewayOrderStatus,
     GatewaySubmitOrder,
@@ -52,6 +55,25 @@ def trade_to_response(trade: GatewayTrade) -> TradeResponse:
         seller_broker_id=trade.seller_broker_id,
         price=trade.price,
         quantity=trade.quantity,
+    )
+
+
+def market_trades_to_response(
+    market_trades: GatewayMarketTrades,
+) -> MarketTradesResponse:
+    """Convert a gateway market trades DTO into an API response."""
+    return MarketTradesResponse(
+        symbol=market_trades.symbol,
+        trades=tuple(
+            MarketTradeResponse(
+                trade_id=t.trade_id,
+                sequence=t.sequence,
+                symbol=t.symbol,
+                price=t.price,
+                quantity=t.quantity,
+            )
+            for t in market_trades.trades
+        ),
     )
 
 
