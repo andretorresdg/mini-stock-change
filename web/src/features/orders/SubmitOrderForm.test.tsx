@@ -58,10 +58,10 @@ function fillValidForm(overrides: { side?: "BID" | "ASK"; symbol?: string } = {}
   });
   fireEvent.blur(screen.getByLabelText(/broker \/ username/i));
 
-  fireEvent.change(screen.getByLabelText(/document number/i), {
+  fireEvent.change(screen.getByLabelText(/customer document number/i), {
     target: { value: "DOC-001" },
   });
-  fireEvent.blur(screen.getByLabelText(/document number/i));
+  fireEvent.blur(screen.getByLabelText(/customer document number/i));
 
   const sideToClick = overrides.side ?? "ASK";
   fireEvent.click(screen.getByRole("radio", { name: sideToClick }));
@@ -99,9 +99,16 @@ describe("SubmitOrderForm – field rendering", () => {
     expect(screen.getByLabelText(/broker \/ username/i)).toBeInTheDocument();
   });
 
-  it("renders Document number field", () => {
+  it("renders Customer document number field", () => {
     renderForm();
-    expect(screen.getByLabelText(/document number/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/customer document number/i)).toBeInTheDocument();
+  });
+
+  it("renders the document number helper text", () => {
+    renderForm();
+    expect(
+      screen.getByText(/required to identify the customer represented by the broker/i),
+    ).toBeInTheDocument();
   });
 
   it("renders Order side radio group", () => {
@@ -126,9 +133,9 @@ describe("SubmitOrderForm – field rendering", () => {
     expect(screen.getByLabelText(/quantity/i)).toBeInTheDocument();
   });
 
-  it("renders Client order ID field", () => {
+  it("does not render a Client order ID input", () => {
     renderForm();
-    expect(screen.getByLabelText(/client order id/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/client order id/i)).not.toBeInTheDocument();
   });
 
   it("renders Order validity select", () => {
@@ -363,18 +370,16 @@ describe("SubmitOrderForm – order preview", () => {
 
 // ── Optional fields ──────────────────────────────────────────────────────────
 
-describe("SubmitOrderForm – optional client order ID", () => {
-  it("allows the form to be valid with an empty client order ID", () => {
+describe("SubmitOrderForm – generated client order ID", () => {
+  it("is valid without the user entering a client order ID", () => {
     renderForm();
     fillValidForm();
     expect(screen.getByRole("button", { name: /submit order/i })).toBeEnabled();
   });
 
-  it("accepts a client order ID value", () => {
+  it("does not expose a client order ID input to the user", () => {
     renderForm();
-    const input = screen.getByLabelText(/client order id/i);
-    fireEvent.change(input, { target: { value: "my-order-123" } });
-    expect(input).toHaveValue("my-order-123");
+    expect(screen.queryByLabelText(/client order id/i)).not.toBeInTheDocument();
   });
 });
 
@@ -468,7 +473,7 @@ describe("SubmitOrderForm – API payload", () => {
     expect(Number.isInteger(req.quantity)).toBe(true);
   });
 
-  it("sends client_order_id as null when empty", async () => {
+  it("sends a generated non-empty client_order_id", async () => {
     renderForm();
     fillValidForm();
     await submitForm();
@@ -478,23 +483,28 @@ describe("SubmitOrderForm – API payload", () => {
     });
 
     const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
-    expect(req.client_order_id).toBeNull();
+    expect(typeof req.client_order_id).toBe("string");
+    expect((req.client_order_id ?? "").length).toBeGreaterThan(0);
   });
 
-  it("sends client_order_id when provided", async () => {
-    renderForm();
-    fillValidForm();
-    fireEvent.change(screen.getByLabelText(/client order id/i), {
-      target: { value: "my-ref-001" },
-    });
-    await submitForm();
+  it("uses a fallback client_order_id when crypto.randomUUID is unavailable", async () => {
+    const original = crypto.randomUUID;
+    // @ts-expect-error deliberately removing randomUUID to test the fallback
+    crypto.randomUUID = undefined;
+    try {
+      renderForm();
+      fillValidForm();
+      await submitForm();
 
-    await waitFor(() => {
-      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
-    });
+      await waitFor(() => {
+        expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+      });
 
-    const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
-    expect(req.client_order_id).toBe("my-ref-001");
+      const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+      expect(req.client_order_id).toMatch(/^cli-/);
+    } finally {
+      crypto.randomUUID = original;
+    }
   });
 });
 

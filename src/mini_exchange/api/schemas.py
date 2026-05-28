@@ -60,14 +60,17 @@ class SubmitOrderRequest(BaseModel):
 
     @field_validator("client_order_id")
     @classmethod
-    def _validate_client_order_id(cls, v: str) -> str:
-        if not v.strip():
+    def _validate_client_order_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        stripped = v.strip()
+        if not stripped:
             msg = "client_order_id must not be empty or whitespace"
             raise ValueError(msg)
-        if len(v) > 128:
+        if len(stripped) > 128:
             msg = "client_order_id must be at most 128 characters"
             raise ValueError(msg)
-        return v
+        return stripped
 
     @field_validator("document_number")
     @classmethod

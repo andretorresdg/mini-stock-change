@@ -93,6 +93,14 @@ class TestDocumentNumberValidation:
 
 
 class TestClientOrderIdValidation:
+    def test_missing_accepted_as_none(self) -> None:
+        req = _valid_request()
+        assert req.client_order_id is None
+
+    def test_explicit_null_accepted_as_none(self) -> None:
+        req = _valid_request(client_order_id=None)
+        assert req.client_order_id is None
+
     def test_empty_string_rejected(self) -> None:
         with pytest.raises(ValidationError, match="empty or whitespace"):
             _valid_request(client_order_id="")
@@ -101,9 +109,17 @@ class TestClientOrderIdValidation:
         with pytest.raises(ValidationError, match="empty or whitespace"):
             _valid_request(client_order_id="   ")
 
+    def test_valid_value_trimmed(self) -> None:
+        req = _valid_request(client_order_id="  my-order-1  ")
+        assert req.client_order_id == "my-order-1"
+
     def test_too_long_rejected(self) -> None:
         with pytest.raises(ValidationError, match="at most 128"):
             _valid_request(client_order_id="x" * 129)
+
+    def test_too_long_after_trim_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="at most 128"):
+            _valid_request(client_order_id="  " + "x" * 129 + "  ")
 
 
 class TestSymbolValidation:

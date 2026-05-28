@@ -27,6 +27,15 @@ const VALIDITY_OPTIONS = [
 
 const DEFAULT_VALIDITY_MINUTES = 60;
 
+// The UI generates this idempotency key so users do not need to manage retry
+// IDs manually. Broker API clients may still send their own client_order_id.
+function generateClientOrderId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `cli-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 interface FormState {
   brokerId: string;
   documentNumber: string;
@@ -34,7 +43,6 @@ interface FormState {
   symbol: string;
   price: string;
   quantity: string;
-  clientOrderId: string;
   validityMinutes: number;
 }
 
@@ -73,7 +81,6 @@ const INITIAL_FORM: FormState = {
   symbol: "",
   price: "",
   quantity: "",
-  clientOrderId: "",
   validityMinutes: DEFAULT_VALIDITY_MINUTES,
 };
 
@@ -125,7 +132,7 @@ export default function SubmitOrderForm() {
     try {
       const validUntil = buildDefaultValidUntil(form.validityMinutes);
       const result = await submitOrder(form.brokerId, {
-        client_order_id: form.clientOrderId || null,
+        client_order_id: generateClientOrderId(),
         document_number: form.documentNumber,
         side: form.side,
         valid_until: validUntil,
@@ -284,11 +291,17 @@ export default function SubmitOrderForm() {
         )}
       </div>
 
-      {/* Document number */}
+      {/* Customer document number */}
       <div style={fieldStyle}>
         <label htmlFor="documentNumber" style={labelStyle}>
-          Document number
+          Customer document number
         </label>
+        <span
+          id="documentNumberHelp"
+          style={{ color: "#718096", fontSize: "0.8rem", display: "block" }}
+        >
+          Required to identify the customer represented by the broker.
+        </span>
         <input
           id="documentNumber"
           type="text"
@@ -297,7 +310,9 @@ export default function SubmitOrderForm() {
           onChange={(e) => setForm((f) => ({ ...f, documentNumber: e.target.value }))}
           onBlur={() => touch("documentNumber")}
           aria-describedby={
-            touched.documentNumber && errors.documentNumber ? "documentNumberError" : undefined
+            touched.documentNumber && errors.documentNumber
+              ? "documentNumberHelp documentNumberError"
+              : "documentNumberHelp"
           }
           style={inputStyle}
         />
@@ -417,24 +432,6 @@ export default function SubmitOrderForm() {
             {errors.quantity}
           </span>
         )}
-      </div>
-
-      {/* Client order ID (optional) */}
-      <div style={fieldStyle}>
-        <label htmlFor="clientOrderId" style={labelStyle}>
-          Client order ID{" "}
-          <span style={{ fontWeight: 400, color: "#718096" }}>
-            (optional – helps make retries idempotent)
-          </span>
-        </label>
-        <input
-          id="clientOrderId"
-          type="text"
-          autoComplete="off"
-          value={form.clientOrderId}
-          onChange={(e) => setForm((f) => ({ ...f, clientOrderId: e.target.value }))}
-          style={inputStyle}
-        />
       </div>
 
       {/* Validity window */}

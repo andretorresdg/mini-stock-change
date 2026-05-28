@@ -163,6 +163,50 @@ class TestIdempotencyConflictHTTP:
         assert resp.json()["code"] == "IDEMPOTENCY_CONFLICT"
 
 
+class TestClientOrderIdHTTP:
+    def test_missing_client_order_id_does_not_500(self) -> None:
+        client = _make_client()
+        body = _valid_body(side="BID")
+        assert "client_order_id" not in body
+        resp = client.post("/api/v1/brokers/broker1/orders", json=body)
+        assert resp.status_code == 201
+        assert resp.json()["client_order_id"] is None
+
+    def test_explicit_null_client_order_id_does_not_500(self) -> None:
+        client = _make_client()
+        resp = client.post(
+            "/api/v1/brokers/broker1/orders",
+            json=_valid_body(side="BID", client_order_id=None),
+        )
+        assert resp.status_code == 201
+        assert resp.json()["client_order_id"] is None
+
+    def test_empty_client_order_id_returns_422_not_500(self) -> None:
+        client = _make_client()
+        resp = client.post(
+            "/api/v1/brokers/broker1/orders",
+            json=_valid_body(side="BID", client_order_id=""),
+        )
+        assert resp.status_code == 422
+
+    def test_whitespace_client_order_id_returns_422_not_500(self) -> None:
+        client = _make_client()
+        resp = client.post(
+            "/api/v1/brokers/broker1/orders",
+            json=_valid_body(side="BID", client_order_id="   "),
+        )
+        assert resp.status_code == 422
+
+    def test_valid_client_order_id_trimmed(self) -> None:
+        client = _make_client()
+        resp = client.post(
+            "/api/v1/brokers/broker1/orders",
+            json=_valid_body(side="BID", client_order_id="  ref-9  "),
+        )
+        assert resp.status_code == 201
+        assert resp.json()["client_order_id"] == "ref-9"
+
+
 class TestExpiredAtSubmissionHTTP:
     def test_expired_returns_400(self) -> None:
         client = _make_client()
