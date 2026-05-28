@@ -8,6 +8,7 @@ from threading import RLock
 from mini_exchange.order_gateway.clock import Clock, utc_now
 from mini_exchange.order_gateway.command_factory import OrderCommandFactory
 from mini_exchange.order_gateway.errors import (
+    GatewayStateError,
     IdempotencyConflictError,
     OrderNotFoundError,
 )
@@ -155,6 +156,32 @@ class OrderGatewayService:
     def command_log(self) -> tuple[SubmitOrderCommand | ExpireOrderCommand, ...]:
         """Return the full command log as an immutable tuple."""
         return tuple(self._command_log)
+
+    def validate_invariants(self) -> None:
+        """Check internal gateway invariants.
+
+        # Debug/test safety net for the MVP.
+        # Production would use durable audit or reconciliation jobs
+        # to detect drift between gateway state and the matching core.
+        """
+        seen_seqs: list[int] = []
+        for cmd in self._command_log:
+            seen_seqs.append(cmd.command_sequence)
+        for i in range(1, len(seen_seqs)):
+            if seen_seqs[i] <= seen_seqs[i - 1]:
+                msg = "command sequences must be strictly increasing"
+                raise GatewayStateError(msg)
+
+        for _key, (_, order_id) in self._idempotency_index.items():
+            if order_id not in self._metadata_by_order_id:
+                msg = f"idempotency index references unknown order {order_id}"
+                raise GatewayStateError(msg)
+
+        for order_id, metadata in self._metadata_by_order_id.items():
+            core_order = self._engine.book(metadata.symbol).get_order(order_id)
+            if core_order is None:
+                msg = f"metadata references unknown core order {order_id}"
+                raise GatewayStateError(msg)
 
     def _expire_resting_orders(self) -> None:
         now = self._clock().astimezone(UTC)
