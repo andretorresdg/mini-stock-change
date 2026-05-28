@@ -40,6 +40,13 @@ class OrderBook:
         """Look up an order by ID."""
         return self._orders.get(order_id)
 
+    def cancel_order(self, order_id: str) -> bool:
+        """Cancel an order by ID. Returns True if successfully canceled."""
+        order = self._orders.get(order_id)
+        if order is None:
+            return False
+        return order.cancel()
+
     def best_bid(self) -> int | None:
         """Best (highest) bid price."""
         return self._bids.best_price()
