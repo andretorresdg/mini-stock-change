@@ -1,13 +1,58 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as apiClient from "../../api/client";
+import { ApiClientError } from "../../api/client";
+import type { OrderResponse } from "../../api/types";
 import SubmitOrderForm from "./SubmitOrderForm";
 
-function renderForm(isPending = false) {
-  render(<SubmitOrderForm isPending={isPending} />);
+// Mock the entire API client module so no real HTTP calls are made.
+vi.mock("../../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof apiClient>();
+  return { ...actual, submitOrder: vi.fn() };
+});
+
+const SAMPLE_ORDER: OrderResponse = {
+  order_id: "AAPL-O-1",
+  broker_id: "broker1",
+  client_order_id: null,
+  document_number: "DOC-001",
+  side: "ASK",
+  symbol: "AAPL",
+  price: 15000,
+  quantity: 5,
+  remaining_quantity: 5,
+  filled_quantity: 0,
+  status: "OPEN",
+  valid_until: "2030-01-01T13:00:00.000Z",
+  trades: [],
+};
+
+const SAMPLE_ORDER_WITH_TRADES: OrderResponse = {
+  ...SAMPLE_ORDER,
+  order_id: "AAPL-O-2",
+  remaining_quantity: 3,
+  filled_quantity: 2,
+  status: "PARTIALLY_FILLED",
+  trades: [
+    {
+      trade_id: "T-1",
+      sequence: 1,
+      symbol: "AAPL",
+      buyer_order_id: "AAPL-O-2",
+      seller_order_id: "AAPL-O-1",
+      buyer_broker_id: "broker2",
+      seller_broker_id: "broker1",
+      price: 15000,
+      quantity: 2,
+    },
+  ],
+};
+
+function renderForm() {
+  render(<SubmitOrderForm />);
 }
 
-/** Fill every required field with a valid value. */
-function fillValidForm() {
+function fillValidForm(overrides: { side?: "BID" | "ASK"; symbol?: string } = {}) {
   fireEvent.change(screen.getByLabelText(/broker \/ username/i), {
     target: { value: "broker1" },
   });
@@ -18,12 +63,15 @@ function fillValidForm() {
   });
   fireEvent.blur(screen.getByLabelText(/document number/i));
 
+  const sideToClick = overrides.side ?? "ASK";
+  fireEvent.click(screen.getByRole("radio", { name: sideToClick }));
+
   fireEvent.change(screen.getByLabelText(/stock symbol/i), {
-    target: { value: "AAPL" },
+    target: { value: overrides.symbol ?? "AAPL" },
   });
 
   fireEvent.change(screen.getByLabelText(/unit price/i), {
-    target: { value: "10.50" },
+    target: { value: "150.00" },
   });
   fireEvent.blur(screen.getByLabelText(/unit price/i));
 
@@ -31,6 +79,17 @@ function fillValidForm() {
     target: { value: "5" },
   });
 }
+
+async function submitForm() {
+  const btn = screen.getByRole("button", { name: /submit order/i });
+  await act(async () => {
+    fireEvent.click(btn);
+  });
+}
+
+afterEach(() => {
+  vi.clearAllMocks();
+});
 
 // ── Field rendering ──────────────────────────────────────────────────────────
 
@@ -83,7 +142,7 @@ describe("SubmitOrderForm – field rendering", () => {
   });
 });
 
-// ── Broker ID behaviour ───────────────────────────────────────────────────────
+// ── Broker ID validation ─────────────────────────────────────────────────────
 
 describe("SubmitOrderForm – broker ID validation", () => {
   it("shows broker ID validation error when field is blurred while empty", () => {
@@ -93,7 +152,7 @@ describe("SubmitOrderForm – broker ID validation", () => {
   });
 });
 
-// ── Document number behaviour ─────────────────────────────────────────────────
+// ── Document number validation ───────────────────────────────────────────────
 
 describe("SubmitOrderForm – document number validation", () => {
   it("shows document number validation error when too short", () => {
@@ -214,28 +273,13 @@ describe("SubmitOrderForm – submit button", () => {
     expect(screen.getByRole("button", { name: /submit order/i })).toBeEnabled();
   });
 
-  it("is disabled when isPending is true even if the form is valid", () => {
-    renderForm(true);
-    fillValidForm();
-    expect(screen.getByRole("button", { name: /submit order/i })).toBeDisabled();
-  });
-
   it("is disabled after entering an invalid symbol", () => {
     renderForm();
     fillValidForm();
-    // override symbol with invalid value
     fireEvent.change(screen.getByLabelText(/stock symbol/i), {
       target: { value: "1" },
     });
     expect(screen.getByRole("button", { name: /submit order/i })).toBeDisabled();
-  });
-
-  it("can be submitted when the form is valid (form submit event handled)", () => {
-    renderForm();
-    fillValidForm();
-    const form = screen.getByRole("button", { name: /submit order/i }).closest("form")!;
-    // Should not throw; handleSubmit calls e.preventDefault() and returns.
-    expect(() => fireEvent.submit(form)).not.toThrow();
   });
 });
 
@@ -310,7 +354,6 @@ describe("SubmitOrderForm – order preview", () => {
 
   it("shows dash for preview price when price is a bare dot", () => {
     renderForm();
-    // "." passes sanitize but normalizePriceDisplay(".") returns "" so preview shows "—"
     fireEvent.change(screen.getByLabelText(/unit price/i), {
       target: { value: "." },
     });
@@ -324,7 +367,6 @@ describe("SubmitOrderForm – optional client order ID", () => {
   it("allows the form to be valid with an empty client order ID", () => {
     renderForm();
     fillValidForm();
-    // clientOrderId is left empty — button should still be enabled
     expect(screen.getByRole("button", { name: /submit order/i })).toBeEnabled();
   });
 
@@ -357,5 +399,299 @@ describe("SubmitOrderForm – validity window", () => {
     const select = screen.getByLabelText(/order validity/i);
     fireEvent.change(select, { target: { value: "1440" } });
     expect(select).toHaveValue("1440");
+  });
+});
+
+// ── API integration – payload ────────────────────────────────────────────────
+
+describe("SubmitOrderForm – API payload", () => {
+  beforeEach(() => {
+    vi.mocked(apiClient.submitOrder).mockResolvedValue(SAMPLE_ORDER);
+  });
+
+  it("sends correct ASK payload with price as integer cents", async () => {
+    renderForm();
+    fillValidForm({ side: "ASK" });
+    await submitForm();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+    });
+
+    const [brokerId, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+    expect(brokerId).toBe("broker1");
+    expect(req.side).toBe("ASK");
+    expect(req.symbol).toBe("AAPL");
+    expect(req.price).toBe(15000); // 150.00 → 15000 cents
+    expect(req.quantity).toBe(5);
+    expect(req.document_number).toBe("DOC-001");
+    expect(typeof req.valid_until).toBe("string");
+    expect(req.valid_until).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("sends correct BID payload", async () => {
+    renderForm();
+    fillValidForm({ side: "BID" });
+    await submitForm();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+    });
+
+    const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+    expect(req.side).toBe("BID");
+  });
+
+  it("sends broker_id as path parameter (first argument)", async () => {
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+    });
+
+    const [brokerId] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+    expect(brokerId).toBe("broker1");
+  });
+
+  it("sends quantity as integer", async () => {
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+    });
+
+    const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+    expect(Number.isInteger(req.quantity)).toBe(true);
+  });
+
+  it("sends client_order_id as null when empty", async () => {
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+    });
+
+    const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+    expect(req.client_order_id).toBeNull();
+  });
+
+  it("sends client_order_id when provided", async () => {
+    renderForm();
+    fillValidForm();
+    fireEvent.change(screen.getByLabelText(/client order id/i), {
+      target: { value: "my-ref-001" },
+    });
+    await submitForm();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+    });
+
+    const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+    expect(req.client_order_id).toBe("my-ref-001");
+  });
+});
+
+// ── Loading state ────────────────────────────────────────────────────────────
+
+describe("SubmitOrderForm – loading state", () => {
+  it("shows Submitting… while the request is in flight", async () => {
+    // Never resolves — simulates a slow request
+    vi.mocked(apiClient.submitOrder).mockReturnValue(new Promise(() => {}));
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /submitting/i })).toBeInTheDocument();
+    });
+  });
+
+  it("disables the submit button while pending", async () => {
+    vi.mocked(apiClient.submitOrder).mockReturnValue(new Promise(() => {}));
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /submitting/i })).toBeDisabled();
+    });
+  });
+
+  it("does not submit again while already pending", async () => {
+    vi.mocked(apiClient.submitOrder).mockReturnValue(new Promise(() => {}));
+    renderForm();
+    fillValidForm();
+    await submitForm(); // first submit
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /submitting/i })).toBeDisabled();
+    });
+
+    // Submit via the form element directly — guard in handleSubmit stops it.
+    const form = screen.getByRole("button", { name: /submitting/i }).closest("form")!;
+    fireEvent.submit(form);
+
+    expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+  });
+});
+
+// ── Success state ────────────────────────────────────────────────────────────
+
+describe("SubmitOrderForm – success state", () => {
+  beforeEach(() => {
+    vi.mocked(apiClient.submitOrder).mockResolvedValue(SAMPLE_ORDER);
+  });
+
+  it("shows the order ID after successful submission", async () => {
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("success-order-id")).toHaveTextContent("AAPL-O-1");
+    });
+  });
+
+  it("shows the save-order-ID instruction", async () => {
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/save this order id/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows order status, remaining quantity, and filled quantity", async () => {
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("success-status")).toHaveTextContent("OPEN");
+      expect(screen.getByTestId("success-remaining")).toHaveTextContent("5");
+      expect(screen.getByTestId("success-filled")).toHaveTextContent("0");
+    });
+  });
+
+  it("does not render trades table when there are no trades", async () => {
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.queryByRole("table", { name: /trades/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders trades table when trades exist", async () => {
+    vi.mocked(apiClient.submitOrder).mockResolvedValue(SAMPLE_ORDER_WITH_TRADES);
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByRole("table", { name: /trades/i })).toBeInTheDocument();
+      expect(screen.getByText("T-1")).toBeInTheDocument();
+    });
+  });
+
+  it("resets the form when 'Submit another order' is clicked", async () => {
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("success-order-id")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /submit another order/i }));
+
+    expect(screen.getByLabelText(/broker \/ username/i)).toHaveValue("");
+    expect(screen.getByRole("button", { name: /submit order/i })).toBeDisabled();
+  });
+});
+
+// ── Error state ──────────────────────────────────────────────────────────────
+
+describe("SubmitOrderForm – error state", () => {
+  it("shows API error message", async () => {
+    vi.mocked(apiClient.submitOrder).mockRejectedValue(
+      new ApiClientError({ code: "EXPIRED_ORDER", message: "order has expired", status: 400 }),
+    );
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("order has expired");
+    });
+  });
+
+  it("shows network error message", async () => {
+    vi.mocked(apiClient.submitOrder).mockRejectedValue(
+      new ApiClientError({
+        code: "NETWORK_ERROR",
+        message: "Failed to fetch",
+        status: 0,
+      }),
+    );
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Failed to fetch");
+    });
+  });
+
+  it("shows generic message for unexpected errors", async () => {
+    vi.mocked(apiClient.submitOrder).mockRejectedValue(new Error("surprise"));
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("An unexpected error occurred.");
+    });
+  });
+
+  it("keeps form data intact after an error", async () => {
+    vi.mocked(apiClient.submitOrder).mockRejectedValue(
+      new ApiClientError({ code: "SERVER_ERROR", message: "server error", status: 500 }),
+    );
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+
+    // Form data is still present
+    expect(screen.getByLabelText(/broker \/ username/i)).toHaveValue("broker1");
+    expect(screen.getByLabelText(/stock symbol/i)).toHaveValue("AAPL");
+  });
+
+  it("re-enables the submit button after an error", async () => {
+    vi.mocked(apiClient.submitOrder).mockRejectedValue(
+      new ApiClientError({ code: "SERVER_ERROR", message: "server error", status: 500 }),
+    );
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /submit order/i })).toBeEnabled();
+    });
   });
 });

@@ -1,6 +1,8 @@
 import { useState } from "react";
-import type { OrderSide } from "../../api/types";
+import { ApiClientError, submitOrder } from "../../api/client";
+import type { OrderResponse, OrderSide } from "../../api/types";
 import {
+  buildDefaultValidUntil,
   normalizePriceDisplay,
   priceToCents,
   quantityToApiInteger,
@@ -44,6 +46,12 @@ interface FormErrors {
   quantity: string | null;
 }
 
+type SubmitStatus =
+  | { kind: "idle" }
+  | { kind: "pending" }
+  | { kind: "success"; order: OrderResponse }
+  | { kind: "error"; message: string };
+
 function validate(state: FormState): FormErrors {
   return {
     brokerId: validateBrokerId(state.brokerId),
@@ -58,35 +66,186 @@ function isValid(errors: FormErrors): boolean {
   return Object.values(errors).every((e) => e === null);
 }
 
-interface SubmitOrderFormProps {
-  isPending?: boolean;
-}
+const INITIAL_FORM: FormState = {
+  brokerId: "",
+  documentNumber: "",
+  side: "BID",
+  symbol: "",
+  price: "",
+  quantity: "",
+  clientOrderId: "",
+  validityMinutes: DEFAULT_VALIDITY_MINUTES,
+};
 
-export default function SubmitOrderForm({ isPending = false }: SubmitOrderFormProps) {
-  const [form, setForm] = useState<FormState>({
-    brokerId: "",
-    documentNumber: "",
-    side: "BID",
-    symbol: "",
-    price: "",
-    quantity: "",
-    clientOrderId: "",
-    validityMinutes: DEFAULT_VALIDITY_MINUTES,
-  });
+const inputStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "0.5rem 0.75rem",
+  background: "#1a202c",
+  border: "1px solid #4a5568",
+  borderRadius: "4px",
+  color: "#e2e8f0",
+  fontSize: "1rem",
+  marginTop: "0.25rem",
+};
 
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontWeight: 500,
+  color: "#a0aec0",
+  fontSize: "0.875rem",
+};
+
+const fieldStyle: React.CSSProperties = { marginBottom: "1.25rem" };
+
+const errorStyle: React.CSSProperties = {
+  color: "#fc8181",
+  fontSize: "0.8rem",
+  marginTop: "0.25rem",
+  display: "block",
+};
+
+export default function SubmitOrderForm() {
+  const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [touched, setTouched] = useState<Partial<Record<keyof FormErrors, boolean>>>({});
+  const [status, setStatus] = useState<SubmitStatus>({ kind: "idle" });
 
   const errors = validate(form);
   const formValid = isValid(errors);
+  const isPending = status.kind === "pending";
 
   function touch(field: keyof FormErrors) {
     setTouched((t) => ({ ...t, [field]: true }));
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // API wiring comes in a future commit.
+    if (!formValid || isPending) return;
+    setStatus({ kind: "pending" });
+    try {
+      const validUntil = buildDefaultValidUntil(form.validityMinutes);
+      const result = await submitOrder(form.brokerId, {
+        client_order_id: form.clientOrderId || null,
+        document_number: form.documentNumber,
+        side: form.side,
+        valid_until: validUntil,
+        symbol: form.symbol,
+        price: priceToCents(form.price),
+        quantity: quantityToApiInteger(form.quantity),
+      });
+      setStatus({ kind: "success", order: result });
+    } catch (err) {
+      const message =
+        err instanceof ApiClientError
+          ? err.apiError.message
+          : "An unexpected error occurred.";
+      setStatus({ kind: "error", message });
+    }
   }
+
+  function handleReset() {
+    setForm(INITIAL_FORM);
+    setTouched({});
+    setStatus({ kind: "idle" });
+  }
+
+  // ── Success panel ───────────────────────────────────────────────────────────
+  if (status.kind === "success") {
+    const { order } = status;
+    return (
+      <section aria-labelledby="successHeading" role="region">
+        <h2 id="successHeading" style={{ color: "#68d391", marginBottom: "1rem" }}>
+          Order submitted
+        </h2>
+        <p style={{ color: "#fbd38d", marginBottom: "1.5rem" }}>
+          Save this order ID. You will need it to check the order status later.
+        </p>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr",
+            gap: "0.4rem 1rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <dt style={{ color: "#a0aec0" }}>Order ID</dt>
+          <dd data-testid="success-order-id">{order.order_id}</dd>
+          <dt style={{ color: "#a0aec0" }}>Status</dt>
+          <dd data-testid="success-status">{order.status}</dd>
+          <dt style={{ color: "#a0aec0" }}>Remaining</dt>
+          <dd data-testid="success-remaining">{order.remaining_quantity}</dd>
+          <dt style={{ color: "#a0aec0" }}>Filled</dt>
+          <dd data-testid="success-filled">{order.filled_quantity}</dd>
+          <dt style={{ color: "#a0aec0" }}>Trades</dt>
+          <dd data-testid="success-trade-count">{order.trades.length}</dd>
+        </dl>
+
+        {order.trades.length > 0 && (
+          <table
+            aria-label="Trades"
+            style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1.5rem" }}
+          >
+            <thead>
+              <tr>
+                {["Trade ID", "Price", "Quantity", "Buyer", "Seller"].map((h) => (
+                  <th
+                    key={h}
+                    style={{
+                      textAlign: "left",
+                      padding: "0.4rem 0.6rem",
+                      color: "#a0aec0",
+                      borderBottom: "1px solid #2d3748",
+                      fontSize: "0.8rem",
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {order.trades.map((t) => (
+                <tr key={t.trade_id}>
+                  <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
+                    {t.trade_id}
+                  </td>
+                  <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
+                    {(t.price / 100).toFixed(2)}
+                  </td>
+                  <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
+                    {t.quantity}
+                  </td>
+                  <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
+                    {t.buyer_broker_id}
+                  </td>
+                  <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
+                    {t.seller_broker_id}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <button
+          onClick={handleReset}
+          style={{
+            padding: "0.6rem 1.5rem",
+            background: "#2d3748",
+            color: "#e2e8f0",
+            border: "1px solid #4a5568",
+            borderRadius: "4px",
+            cursor: "pointer",
+            fontSize: "1rem",
+          }}
+        >
+          Submit another order
+        </button>
+      </section>
+    );
+  }
+
+  // ── Form ────────────────────────────────────────────────────────────────────
 
   // Preview values
   const previewSide = form.side;
@@ -100,34 +259,6 @@ export default function SubmitOrderForm({ isPending = false }: SubmitOrderFormPr
     const qty = quantityToApiInteger(form.quantity);
     notional = `$${((cents * qty) / 100).toFixed(2)}`;
   }
-
-  const inputStyle: React.CSSProperties = {
-    display: "block",
-    width: "100%",
-    padding: "0.5rem 0.75rem",
-    background: "#1a202c",
-    border: "1px solid #4a5568",
-    borderRadius: "4px",
-    color: "#e2e8f0",
-    fontSize: "1rem",
-    marginTop: "0.25rem",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: "block",
-    fontWeight: 500,
-    color: "#a0aec0",
-    fontSize: "0.875rem",
-  };
-
-  const fieldStyle: React.CSSProperties = { marginBottom: "1.25rem" };
-
-  const errorStyle: React.CSSProperties = {
-    color: "#fc8181",
-    fontSize: "0.8rem",
-    marginTop: "0.25rem",
-    display: "block",
-  };
 
   return (
     <form onSubmit={handleSubmit} noValidate>
@@ -365,8 +496,22 @@ export default function SubmitOrderForm({ isPending = false }: SubmitOrderFormPr
         </dl>
       </section>
 
-      {/* Placeholder for future success / error feedback */}
-      <div role="status" aria-live="polite" aria-label="Order submission status" />
+      {/* Error feedback */}
+      {status.kind === "error" && (
+        <div
+          role="alert"
+          style={{
+            background: "#742a2a",
+            border: "1px solid #fc8181",
+            borderRadius: "4px",
+            padding: "0.75rem 1rem",
+            marginBottom: "1rem",
+            color: "#fed7d7",
+          }}
+        >
+          {status.message}
+        </div>
+      )}
 
       {/* Submit */}
       <button
@@ -382,7 +527,7 @@ export default function SubmitOrderForm({ isPending = false }: SubmitOrderFormPr
           cursor: formValid && !isPending ? "pointer" : "not-allowed",
         }}
       >
-        Submit Order
+        {isPending ? "Submitting…" : "Submit Order"}
       </button>
     </form>
   );
