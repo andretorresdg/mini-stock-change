@@ -21,6 +21,7 @@ from mini_exchange.order_gateway.models import (
     SubmitOrderCommand,
 )
 from mini_exchange.order_gateway.sequencer import MonotonicSequencer
+from mini_exchange.order_gateway.service import OrderGatewayService
 from mini_exchange.order_gateway.validation import (
     build_submit_fingerprint,
     make_order_id,
@@ -42,6 +43,7 @@ __all__ = [
     "MonotonicSequencer",
     "OrderCommandFactory",
     "OrderGatewayError",
+    "OrderGatewayService",
     "OrderMetadata",
     "OrderNotFoundError",
     "SubmitOrderCommand",
