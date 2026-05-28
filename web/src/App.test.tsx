@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, createMemoryRouter, RouterProvider } from "react-router-dom";
 import { describe, it, expect } from "vitest";
@@ -5,9 +6,17 @@ import App from "./app/App";
 import Layout from "./components/Layout";
 import { routes } from "./app/routes";
 
+function createTestQueryClient() {
+  return new QueryClient({ defaultOptions: { queries: { retry: 0, gcTime: 0 } } });
+}
+
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
+  render(
+    <QueryClientProvider client={createTestQueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
 }
 
 describe("App (browser router)", () => {

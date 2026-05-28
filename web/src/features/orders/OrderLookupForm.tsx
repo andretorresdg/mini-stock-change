@@ -1,14 +1,8 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ApiClientError, getOrder } from "../../api/client";
 import type { OrderResponse, OrderStatus } from "../../api/types";
 import { validateBrokerId, validateOrderId } from "./validation";
-
-type LookupStatus =
-  | { kind: "idle" }
-  | { kind: "loading" }
-  | { kind: "success"; order: OrderResponse }
-  | { kind: "refreshing"; order: OrderResponse }
-  | { kind: "error"; message: string };
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
   OPEN: "Open",
@@ -17,6 +11,13 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   CANCELED: "Canceled",
   EXPIRED: "Expired",
 };
+
+const TERMINAL_STATUSES = new Set<OrderStatus>(["FILLED", "CANCELED", "EXPIRED"]);
+
+// MVP uses conservative polling (5 s minimum interval).
+// A production/live trading UI would likely use WebSocket or
+// server-sent events.
+const MIN_POLL_INTERVAL_MS = 5_000;
 
 const inputStyle: React.CSSProperties = {
   display: "block",
@@ -50,53 +51,65 @@ function centsToDecimal(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+interface SubmittedPair {
+  brokerId: string;
+  orderId: string;
+}
+
 export default function OrderLookupForm() {
   const [brokerId, setBrokerId] = useState("");
   const [orderId, setOrderId] = useState("");
   const [touchedBroker, setTouchedBroker] = useState(false);
   const [touchedOrder, setTouchedOrder] = useState(false);
-  const [status, setStatus] = useState<LookupStatus>({ kind: "idle" });
+  const [submittedPair, setSubmittedPair] = useState<SubmittedPair | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
 
   const brokerError = validateBrokerId(brokerId);
   const orderError = validateOrderId(orderId);
   const formValid = brokerError === null && orderError === null;
-  const isLoading = status.kind === "loading" || status.kind === "refreshing";
 
-  async function doLookup() {
-    if (!formValid || isLoading) return;
-    const prevOrder = status.kind === "success" ? status.order : undefined;
-    setStatus(
-      prevOrder !== undefined
-        ? { kind: "refreshing", order: prevOrder }
-        : { kind: "loading" },
-    );
-    try {
-      const result = await getOrder(brokerId, orderId.trim());
-      setStatus({ kind: "success", order: result });
-    } catch (err) {
-      if (err instanceof ApiClientError && err.apiError.status === 404) {
-        setStatus({ kind: "error", message: "Order not found for this broker/user." });
-      } else {
-        const message =
-          err instanceof ApiClientError
-            ? err.apiError.message
-            : "An unexpected error occurred.";
-        setStatus({ kind: "error", message });
-      }
+  // MVP uses conservative polling (5 s minimum interval).
+  // A production/live trading UI would likely use WebSocket or
+  // server-sent events.
+  const { data, isFetching, isError, error, dataUpdatedAt, refetch } = useQuery<
+    OrderResponse,
+    Error
+  >({
+    queryKey: ["order", submittedPair?.brokerId, submittedPair?.orderId],
+    queryFn: () => getOrder(submittedPair!.brokerId, submittedPair!.orderId),
+    enabled: submittedPair !== null,
+    refetchInterval: (query) => {
+      if (!autoRefresh) return false;
+      const d = query.state.data;
+      if (d !== undefined && TERMINAL_STATUSES.has(d.status)) return false;
+      return MIN_POLL_INTERVAL_MS;
+    },
+    retry: 0,
+    gcTime: 0,
+  });
+
+  const isTerminal = data !== undefined && TERMINAL_STATUSES.has(data.status);
+  const lastUpdated =
+    dataUpdatedAt > 0 ? new Date(dataUpdatedAt).toLocaleTimeString() : null;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!formValid || isFetching) return;
+    const pair: SubmittedPair = { brokerId: brokerId.trim(), orderId: orderId.trim() };
+    if (
+      submittedPair !== null &&
+      submittedPair.brokerId === pair.brokerId &&
+      submittedPair.orderId === pair.orderId
+    ) {
+      void refetch();
+    } else {
+      setSubmittedPair(pair);
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    await doLookup();
+  function handleRefresh() {
+    void refetch();
   }
-
-  async function handleRefresh() {
-    await doLookup();
-  }
-
-  const displayedOrder =
-    status.kind === "success" || status.kind === "refreshing" ? status.order : null;
 
   return (
     <div>
@@ -151,23 +164,23 @@ export default function OrderLookupForm() {
 
         <button
           type="submit"
-          disabled={!formValid || isLoading}
+          disabled={!formValid || isFetching}
           style={{
             padding: "0.6rem 1.5rem",
-            background: formValid && !isLoading ? "#3182ce" : "#2d3748",
+            background: formValid && !isFetching ? "#3182ce" : "#2d3748",
             color: "#e2e8f0",
             border: "none",
             borderRadius: "4px",
             fontSize: "1rem",
-            cursor: formValid && !isLoading ? "pointer" : "not-allowed",
+            cursor: formValid && !isFetching ? "pointer" : "not-allowed",
           }}
         >
-          {isLoading ? "Looking up…" : "Look up order"}
+          {isFetching && data === undefined ? "Looking up…" : "Look up order"}
         </button>
       </form>
 
       {/* Error feedback */}
-      {status.kind === "error" && (
+      {isError && error !== null && (
         <div
           role="alert"
           style={{
@@ -179,22 +192,27 @@ export default function OrderLookupForm() {
             color: "#fed7d7",
           }}
         >
-          {status.message}
+          {error instanceof ApiClientError && error.apiError.status === 404
+            ? "Order not found for this broker/user."
+            : error instanceof ApiClientError
+              ? error.apiError.message
+              : "An unexpected error occurred."}
         </div>
       )}
 
       {/* Order details */}
-      {displayedOrder !== null && (
+      {data !== undefined && (
         <section
           aria-labelledby="orderDetailsHeading"
           style={{ marginTop: "1.5rem" }}
         >
+          {/* Header row */}
           <div
             style={{
               display: "flex",
               alignItems: "baseline",
               gap: "1rem",
-              marginBottom: "1rem",
+              marginBottom: "0.5rem",
             }}
           >
             <h2 id="orderDetailsHeading" style={{ fontSize: "1.1rem" }}>
@@ -202,19 +220,62 @@ export default function OrderLookupForm() {
             </h2>
             <button
               onClick={handleRefresh}
-              disabled={isLoading}
+              disabled={isFetching}
               style={{
                 padding: "0.3rem 0.9rem",
                 background: "#2d3748",
                 color: "#e2e8f0",
                 border: "1px solid #4a5568",
                 borderRadius: "4px",
-                cursor: isLoading ? "not-allowed" : "pointer",
+                cursor: isFetching ? "not-allowed" : "pointer",
                 fontSize: "0.85rem",
               }}
             >
-              {isLoading ? "Refreshing…" : "Refresh now"}
+              {isFetching ? "Refreshing…" : "Refresh now"}
             </button>
+          </div>
+
+          {/* Last updated */}
+          {lastUpdated !== null && (
+            <p
+              style={{ fontSize: "0.8rem", color: "#718096", marginBottom: "0.5rem" }}
+              data-testid="last-updated"
+            >
+              Last updated at {lastUpdated}
+            </p>
+          )}
+
+          {/* Auto-refresh controls */}
+          <div style={{ marginBottom: "1rem" }}>
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                fontSize: "0.875rem",
+                color: "#a0aec0",
+                cursor: isTerminal ? "not-allowed" : "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                id="autoRefreshToggle"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                disabled={isTerminal}
+              />
+              Auto-refresh
+            </label>
+            <p
+              style={{
+                fontSize: "0.75rem",
+                color: "#718096",
+                marginTop: "0.25rem",
+              }}
+            >
+              Auto-refresh checks every 5 seconds and stops when the order reaches a
+              terminal status.
+            </p>
           </div>
 
           <dl
@@ -227,54 +288,52 @@ export default function OrderLookupForm() {
             }}
           >
             <dt style={{ color: "#a0aec0" }}>Order ID</dt>
-            <dd data-testid="detail-order-id">{displayedOrder.order_id}</dd>
+            <dd data-testid="detail-order-id">{data.order_id}</dd>
 
             <dt style={{ color: "#a0aec0" }}>Broker</dt>
-            <dd data-testid="detail-broker-id">{displayedOrder.broker_id}</dd>
+            <dd data-testid="detail-broker-id">{data.broker_id}</dd>
 
-            {displayedOrder.client_order_id !== null && (
+            {data.client_order_id !== null && (
               <>
                 <dt style={{ color: "#a0aec0" }}>Client order ID</dt>
-                <dd data-testid="detail-client-order-id">
-                  {displayedOrder.client_order_id}
-                </dd>
+                <dd data-testid="detail-client-order-id">{data.client_order_id}</dd>
               </>
             )}
 
             <dt style={{ color: "#a0aec0" }}>Document</dt>
-            <dd data-testid="detail-document">{displayedOrder.document_number}</dd>
+            <dd data-testid="detail-document">{data.document_number}</dd>
 
             <dt style={{ color: "#a0aec0" }}>Side</dt>
-            <dd data-testid="detail-side">{displayedOrder.side}</dd>
+            <dd data-testid="detail-side">{data.side}</dd>
 
             <dt style={{ color: "#a0aec0" }}>Symbol</dt>
-            <dd data-testid="detail-symbol">{displayedOrder.symbol}</dd>
+            <dd data-testid="detail-symbol">{data.symbol}</dd>
 
             <dt style={{ color: "#a0aec0" }}>Unit price</dt>
-            <dd data-testid="detail-price">{centsToDecimal(displayedOrder.price)}</dd>
+            <dd data-testid="detail-price">{centsToDecimal(data.price)}</dd>
 
             <dt style={{ color: "#a0aec0" }}>Quantity</dt>
-            <dd data-testid="detail-quantity">{displayedOrder.quantity}</dd>
+            <dd data-testid="detail-quantity">{data.quantity}</dd>
 
             <dt style={{ color: "#a0aec0" }}>Remaining</dt>
-            <dd data-testid="detail-remaining">{displayedOrder.remaining_quantity}</dd>
+            <dd data-testid="detail-remaining">{data.remaining_quantity}</dd>
 
             <dt style={{ color: "#a0aec0" }}>Filled</dt>
-            <dd data-testid="detail-filled">{displayedOrder.filled_quantity}</dd>
+            <dd data-testid="detail-filled">{data.filled_quantity}</dd>
 
             <dt style={{ color: "#a0aec0" }}>Status</dt>
             <dd data-testid="detail-status">
-              <span aria-label={`Status: ${STATUS_LABELS[displayedOrder.status]}`}>
-                {STATUS_LABELS[displayedOrder.status]}
+              <span aria-label={`Status: ${STATUS_LABELS[data.status]}`}>
+                {STATUS_LABELS[data.status]}
               </span>
             </dd>
 
             <dt style={{ color: "#a0aec0" }}>Valid until</dt>
-            <dd data-testid="detail-valid-until">{displayedOrder.valid_until}</dd>
+            <dd data-testid="detail-valid-until">{data.valid_until}</dd>
           </dl>
 
           {/* Trades */}
-          {displayedOrder.trades.length === 0 ? (
+          {data.trades.length === 0 ? (
             <p style={{ color: "#a0aec0", fontSize: "0.9rem" }}>No trades yet.</p>
           ) : (
             <table
@@ -300,7 +359,7 @@ export default function OrderLookupForm() {
                 </tr>
               </thead>
               <tbody>
-                {displayedOrder.trades.map((t) => (
+                {data.trades.map((t) => (
                   <tr key={t.trade_id}>
                     <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
                       {t.trade_id}

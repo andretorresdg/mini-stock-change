@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as apiClient from "../../api/client";
 import { ApiClientError } from "../../api/client";
@@ -9,6 +11,17 @@ vi.mock("../../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof apiClient>();
   return { ...actual, getOrder: vi.fn() };
 });
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: 0, gcTime: 0, refetchOnWindowFocus: false },
+    },
+  });
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
 
 const OPEN_ORDER: OrderResponse = {
   order_id: "AAPL-O-1",
@@ -52,12 +65,14 @@ const ORDER_WITH_CLIENT_ID: OrderResponse = {
   client_order_id: "my-ref-001",
 };
 
+const FILLED_ORDER: OrderResponse = { ...OPEN_ORDER, status: "FILLED" };
+
 afterEach(() => {
   vi.resetAllMocks();
 });
 
 function renderForm() {
-  render(<OrderLookupForm />);
+  render(<OrderLookupForm />, { wrapper: createWrapper() });
 }
 
 function fillForm(broker = "broker1", order = "AAPL-O-1") {
@@ -140,6 +155,50 @@ describe("OrderLookupForm – validation", () => {
   });
 });
 
+// ── Query guard ───────────────────────────────────────────────────────────────
+
+describe("OrderLookupForm – query guard", () => {
+  it("does not call getOrder before the user submits", async () => {
+    renderForm();
+    fillForm();
+    // No submit
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(vi.mocked(apiClient.getOrder)).not.toHaveBeenCalled();
+  });
+
+  it("does not re-query when input values change after first submission", async () => {
+    vi.mocked(apiClient.getOrder).mockResolvedValue(OPEN_ORDER);
+    renderForm();
+    fillForm("broker1", "AAPL-O-1");
+    await submitLookup();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.getOrder)).toHaveBeenCalledTimes(1);
+    });
+
+    // Change inputs without submitting
+    fireEvent.change(screen.getByLabelText(/broker \/ username/i), {
+      target: { value: "broker2" },
+    });
+    fireEvent.change(screen.getByLabelText(/order id/i), {
+      target: { value: "AAPL-O-99" },
+    });
+
+    // Allow any potential async effects to settle
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(vi.mocked(apiClient.getOrder)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(apiClient.getOrder)).not.toHaveBeenCalledWith(
+      "broker2",
+      "AAPL-O-99",
+    );
+  });
+});
+
 // ── API call ─────────────────────────────────────────────────────────────────
 
 describe("OrderLookupForm – API call", () => {
@@ -164,6 +223,35 @@ describe("OrderLookupForm – API call", () => {
 
     await waitFor(() => {
       expect(vi.mocked(apiClient.getOrder)).toHaveBeenCalledWith("broker1", "AAPL-O-1");
+    });
+  });
+
+  it("fetches once on manual lookup", async () => {
+    renderForm();
+    fillForm();
+    await submitLookup();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.getOrder)).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("re-submitting the same pair calls getOrder again via refetch", async () => {
+    renderForm();
+    fillForm();
+    await submitLookup();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("detail-order-id")).toBeInTheDocument();
+    });
+
+    // Submit again with the same pair values
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /look up order/i }));
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.getOrder)).toHaveBeenCalledTimes(2);
     });
   });
 });
@@ -204,7 +292,9 @@ describe("OrderLookupForm – loading state", () => {
     });
 
     await act(async () => {
-      fireEvent.submit(screen.getByRole("button", { name: /looking up/i }).closest("form")!);
+      fireEvent.submit(
+        screen.getByRole("button", { name: /looking up/i }).closest("form")!,
+      );
     });
 
     expect(vi.mocked(apiClient.getOrder)).toHaveBeenCalledTimes(1);
@@ -412,6 +502,25 @@ describe("OrderLookupForm – manual refresh", () => {
     });
   });
 
+  it("manual refresh works when auto-refresh is off", async () => {
+    vi.mocked(apiClient.getOrder).mockResolvedValue(OPEN_ORDER);
+    renderForm();
+    fillForm();
+    await submitLookup();
+
+    await waitFor(() => {
+      expect(screen.getByRole("checkbox", { name: /auto-refresh/i })).not.toBeChecked();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /refresh now/i }));
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.getOrder)).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("disables Refresh now button while loading", async () => {
     vi.mocked(apiClient.getOrder)
       .mockResolvedValueOnce(OPEN_ORDER)
@@ -432,6 +541,142 @@ describe("OrderLookupForm – manual refresh", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /refreshing/i })).toBeDisabled();
     });
+  });
+});
+
+// ── Auto-refresh toggle ───────────────────────────────────────────────────────
+
+describe("OrderLookupForm – auto-refresh toggle", () => {
+  it("auto-refresh toggle is off by default after first successful lookup", async () => {
+    vi.mocked(apiClient.getOrder).mockResolvedValue(OPEN_ORDER);
+    renderForm();
+    fillForm();
+    await submitLookup();
+
+    await waitFor(() => {
+      expect(screen.getByRole("checkbox", { name: /auto-refresh/i })).not.toBeChecked();
+    });
+  });
+
+  it("toggle is disabled for terminal statuses", async () => {
+    vi.mocked(apiClient.getOrder).mockResolvedValue(FILLED_ORDER);
+    renderForm();
+    fillForm();
+    await submitLookup();
+
+    await waitFor(() => {
+      expect(screen.getByRole("checkbox", { name: /auto-refresh/i })).toBeDisabled();
+    });
+  });
+
+  it("renders explanatory auto-refresh text after successful lookup", async () => {
+    vi.mocked(apiClient.getOrder).mockResolvedValue(OPEN_ORDER);
+    renderForm();
+    fillForm();
+    await submitLookup();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/auto-refresh checks every 5 seconds/i),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+// ── Last updated at ───────────────────────────────────────────────────────────
+
+describe("OrderLookupForm – last updated at", () => {
+  it("shows Last updated at after a successful fetch", async () => {
+    vi.mocked(apiClient.getOrder).mockResolvedValue(OPEN_ORDER);
+    renderForm();
+    fillForm();
+    await submitLookup();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("last-updated")).toBeInTheDocument();
+      expect(screen.getByTestId("last-updated").textContent).toMatch(
+        /last updated at/i,
+      );
+    });
+  });
+
+  it("does not show Last updated at before first fetch", () => {
+    renderForm();
+    expect(screen.queryByTestId("last-updated")).not.toBeInTheDocument();
+  });
+});
+
+// ── Auto-refresh polling (fake timers) ────────────────────────────────────────
+// Fake timers are activated AFTER the initial fetch so that waitFor (which uses
+// setInterval internally) still works with real timers during setup.
+
+describe("OrderLookupForm – polling (fake timers)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("polls every 5 seconds when auto-refresh is enabled", async () => {
+    vi.mocked(apiClient.getOrder).mockResolvedValue(OPEN_ORDER);
+    renderForm();
+    fillForm();
+    await submitLookup();
+
+    // Wait for initial data using real timers
+    await waitFor(() => {
+      expect(screen.getByTestId("detail-order-id")).toBeInTheDocument();
+    });
+
+    // Switch to fake timers now that initial data is loaded
+    vi.useFakeTimers();
+
+    // Enable auto-refresh — TanStack Query schedules its next interval with fake timers
+    await act(async () => {
+      fireEvent.click(screen.getByRole("checkbox", { name: /auto-refresh/i }));
+    });
+
+    // Advance past the 5-second interval; advanceTimersByTimeAsync also drains microtasks
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(vi.mocked(apiClient.getOrder)).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops polling once order reaches a terminal status", async () => {
+    vi.mocked(apiClient.getOrder)
+      .mockResolvedValueOnce(OPEN_ORDER)
+      .mockResolvedValueOnce(FILLED_ORDER);
+
+    renderForm();
+    fillForm();
+    await submitLookup();
+
+    // Wait for initial OPEN status using real timers
+    await waitFor(() => {
+      expect(screen.getByTestId("detail-status")).toHaveTextContent("Open");
+    });
+
+    // Switch to fake timers
+    vi.useFakeTimers();
+
+    // Enable auto-refresh while order is non-terminal
+    await act(async () => {
+      fireEvent.click(screen.getByRole("checkbox", { name: /auto-refresh/i }));
+    });
+
+    // First poll at 5 s → FILLED order received (call #2)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(vi.mocked(apiClient.getOrder)).toHaveBeenCalledTimes(2);
+
+    // Advance another 5 s — polling stopped, no further calls
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(vi.mocked(apiClient.getOrder)).toHaveBeenCalledTimes(2);
   });
 });
 
