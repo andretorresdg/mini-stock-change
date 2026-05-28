@@ -2,8 +2,18 @@
 
 from __future__ import annotations
 
-from mini_exchange.orderbook.models import ExecutionReport, Order, Side, Trade
+from mini_exchange.orderbook.models import (
+    ExecutionReport,
+    Order,
+    OrderStatus,
+    Side,
+    Trade,
+)
 from mini_exchange.orderbook.side_book import SideBook
+
+
+class InvariantViolationError(Exception):
+    """Raised when an order book invariant is violated."""
 
 
 class OrderBook:
@@ -12,6 +22,7 @@ class OrderBook:
     __slots__ = (
         "_asks",
         "_bids",
+        "_check_invariants",
         "_order_seq",
         "_orders",
         "_symbol",
@@ -19,7 +30,7 @@ class OrderBook:
         "_trades",
     )
 
-    def __init__(self, symbol: str) -> None:
+    def __init__(self, symbol: str, *, check_invariants: bool = False) -> None:
         if not symbol:
             msg = "symbol must be non-empty"
             raise ValueError(msg)
@@ -30,6 +41,7 @@ class OrderBook:
         self._trades: list[Trade] = []
         self._order_seq = 0
         self._trade_seq = 0
+        self._check_invariants = check_invariants
 
     @property
     def trades(self) -> tuple[Trade, ...]:
@@ -45,7 +57,10 @@ class OrderBook:
         order = self._orders.get(order_id)
         if order is None:
             return False
-        return order.cancel()
+        result = order.cancel()
+        if result and self._check_invariants:
+            self.validate_invariants()
+        return result
 
     def best_bid(self) -> int | None:
         """Best (highest) bid price."""
@@ -93,7 +108,67 @@ class OrderBook:
         if order.is_active:
             book = self._bids if side == Side.BUY else self._asks
             book.add(order)
-        return ExecutionReport(accepted_order=order, trades=tuple(trades))
+        report = ExecutionReport(accepted_order=order, trades=tuple(trades))
+        if self._check_invariants:
+            self.validate_invariants()
+        return report
+
+    def validate_invariants(self) -> None:
+        """Check all order book invariants. Raises InvariantViolation on failure."""
+        self._check_order_invariants()
+        self._check_not_crossed()
+        self._check_trade_invariants()
+
+    def _check_order_invariants(self) -> None:
+        for order in self._orders.values():
+            if order.symbol != self._symbol:
+                msg = f"order {order.order_id} has wrong symbol {order.symbol}"
+                raise InvariantViolationError(msg)
+            if order.remaining < 0:
+                msg = f"order {order.order_id} has negative remaining"
+                raise InvariantViolationError(msg)
+            if order.status == OrderStatus.FILLED and order.remaining != 0:
+                msg = f"order {order.order_id} is FILLED but remaining != 0"
+                raise InvariantViolationError(msg)
+            if order.is_active and order.remaining <= 0:
+                msg = f"order {order.order_id} is active but remaining <= 0"
+                raise InvariantViolationError(msg)
+
+    def _check_not_crossed(self) -> None:
+        bid = self.best_bid()
+        ask = self.best_ask()
+        if bid is not None and ask is not None and bid >= ask:
+            msg = f"book is crossed: best_bid={bid} >= best_ask={ask}"
+            raise InvariantViolationError(msg)
+
+    def _check_trade_invariants(self) -> None:
+        for trade in self._trades:
+            if trade.price <= 0:
+                msg = f"trade {trade.trade_id} has non-positive price"
+                raise InvariantViolationError(msg)
+            if trade.quantity <= 0:
+                msg = f"trade {trade.trade_id} has non-positive quantity"
+                raise InvariantViolationError(msg)
+            buyer = self._orders.get(trade.buyer_order_id)
+            if buyer is None:
+                msg = f"trade {trade.trade_id} refers to unknown buyer"
+                raise InvariantViolationError(msg)
+            seller = self._orders.get(trade.seller_order_id)
+            if seller is None:
+                msg = f"trade {trade.trade_id} refers to unknown seller"
+                raise InvariantViolationError(msg)
+            if buyer.side != Side.BUY:
+                msg = f"trade {trade.trade_id} buyer has wrong side"
+                raise InvariantViolationError(msg)
+            if seller.side != Side.SELL:
+                msg = f"trade {trade.trade_id} seller has wrong side"
+                raise InvariantViolationError(msg)
+            if trade.price != seller.price:
+                msg = (
+                    f"trade {trade.trade_id} price {trade.price} "
+                    f"!= seller price {seller.price}"
+                )
+                raise InvariantViolationError(msg)
 
     def _match(self, order: Order) -> list[Trade]:
         """Match an incoming order against the opposite side."""

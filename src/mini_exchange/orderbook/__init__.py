@@ -8,11 +8,12 @@ from mini_exchange.orderbook.models import (
     Side,
     Trade,
 )
-from mini_exchange.orderbook.order_book import OrderBook
+from mini_exchange.orderbook.order_book import InvariantViolationError, OrderBook
 from mini_exchange.orderbook.side_book import SideBook
 
 __all__ = [
     "ExecutionReport",
+    "InvariantViolationError",
     "MatchingEngine",
     "Order",
     "OrderBook",
