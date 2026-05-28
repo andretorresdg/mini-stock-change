@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from mini_exchange.order_gateway.errors import IdempotencyConflictError
-from mini_exchange.order_gateway.models import GatewaySubmitOrder
+from mini_exchange.order_gateway.models import GatewaySubmitOrder, SubmitOrderCommand
 from mini_exchange.order_gateway.service import OrderGatewayService
 from mini_exchange.orderbook.models import Side
 
@@ -127,4 +127,7 @@ class TestRetryAfterExpiry:
         clock.now = valid_until + timedelta(seconds=1)
         r2 = svc.submit_order(req)
         assert r1.order_id == r2.order_id
-        assert len(svc.command_log()) == 1
+        submit_cmds = [
+            c for c in svc.command_log() if isinstance(c, SubmitOrderCommand)
+        ]
+        assert len(submit_cmds) == 1

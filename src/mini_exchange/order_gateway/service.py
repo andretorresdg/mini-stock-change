@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from threading import RLock
 
 from mini_exchange.order_gateway.clock import Clock, utc_now
@@ -44,6 +45,7 @@ class OrderGatewayService:
     """
 
     __slots__ = (
+        "_clock",
         "_command_factory",
         "_command_log",
         "_engine",
@@ -59,6 +61,7 @@ class OrderGatewayService:
     ) -> None:
         self._engine = engine or MatchingEngine()
         effective_clock = clock or utc_now
+        self._clock = effective_clock
         self._command_factory = OrderCommandFactory(
             command_sequencer=MonotonicSequencer(),
             order_id_sequencer=MonotonicSequencer(),
@@ -89,6 +92,7 @@ class OrderGatewayService:
                 if existing is not None:
                     stored_fp, stored_order_id = existing
                     if stored_fp == fingerprint:
+                        self._expire_resting_orders()
                         return self._build_order_response(
                             self._metadata_by_order_id[stored_order_id]
                         )
@@ -97,6 +101,11 @@ class OrderGatewayService:
                         f"already used with different parameters"
                     )
                     raise IdempotencyConflictError(msg)
+
+            # MVP uses lazy expiration on submit/status calls.
+            # Production could use a persisted time-indexed scheduler
+            # or command log replay to expire orders proactively.
+            self._expire_resting_orders()
 
             cmd = self._command_factory.create_submit_order_command(request)
             self._command_log.append(cmd)
@@ -134,6 +143,7 @@ class OrderGatewayService:
         """Retrieve the current state of an order for the given broker."""
         with self._lock:
             validate_broker_id(broker_id)
+            self._expire_resting_orders()
             metadata = self._metadata_by_order_id.get(order_id)
             # Wrong broker gets OrderNotFoundError intentionally
             # to avoid leaking whether another broker's order exists.
@@ -145,6 +155,31 @@ class OrderGatewayService:
     def command_log(self) -> tuple[SubmitOrderCommand | ExpireOrderCommand, ...]:
         """Return the full command log as an immutable tuple."""
         return tuple(self._command_log)
+
+    def _expire_resting_orders(self) -> None:
+        now = self._clock().astimezone(UTC)
+        to_expire: list[OrderMetadata] = []
+
+        for metadata in self._metadata_by_order_id.values():
+            if metadata.status_override is not None:
+                continue
+            if metadata.valid_until <= now:
+                core_order = self._engine.book(metadata.symbol).get_order(
+                    metadata.order_id
+                )
+                assert core_order is not None
+                if core_order.is_active:
+                    to_expire.append(metadata)
+
+        for metadata in sorted(to_expire, key=lambda m: m.order_id):
+            cmd = self._command_factory.create_expire_order_command(
+                order_id=metadata.order_id,
+                symbol=metadata.symbol,
+                reason="validity window elapsed",
+            )
+            self._command_log.append(cmd)
+            self._engine.cancel_order(metadata.symbol, metadata.order_id)
+            metadata.status_override = GatewayOrderStatus.EXPIRED
 
     def _build_order_response(self, metadata: OrderMetadata) -> GatewayOrder:
         core_order = self._engine.book(metadata.symbol).get_order(metadata.order_id)
