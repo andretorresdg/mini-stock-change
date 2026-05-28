@@ -47,10 +47,10 @@ describe("Navigation", () => {
 });
 
 describe("Root route", () => {
-  it("redirects / to /submit-order and shows the submit order page", () => {
+  it("redirects / to /submit-order and shows the submit order page", async () => {
     renderAt("/");
     expect(
-      screen.getByRole("heading", { name: "Submit Order" }),
+      await screen.findByRole("heading", { name: "Submit Order" }),
     ).toBeInTheDocument();
   });
 });
