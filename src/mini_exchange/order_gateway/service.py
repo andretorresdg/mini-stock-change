@@ -6,7 +6,10 @@ from threading import RLock
 
 from mini_exchange.order_gateway.clock import Clock, utc_now
 from mini_exchange.order_gateway.command_factory import OrderCommandFactory
-from mini_exchange.order_gateway.errors import OrderNotFoundError
+from mini_exchange.order_gateway.errors import (
+    IdempotencyConflictError,
+    OrderNotFoundError,
+)
 from mini_exchange.order_gateway.models import (
     ExpireOrderCommand,
     GatewayOrder,
@@ -17,7 +20,10 @@ from mini_exchange.order_gateway.models import (
     SubmitOrderCommand,
 )
 from mini_exchange.order_gateway.sequencer import MonotonicSequencer
-from mini_exchange.order_gateway.validation import validate_broker_id
+from mini_exchange.order_gateway.validation import (
+    build_submit_fingerprint,
+    validate_broker_id,
+)
 from mini_exchange.orderbook.engine import MatchingEngine
 from mini_exchange.orderbook.models import OrderStatus, Trade
 
@@ -41,6 +47,7 @@ class OrderGatewayService:
         "_command_factory",
         "_command_log",
         "_engine",
+        "_idempotency_index",
         "_lock",
         "_metadata_by_order_id",
     )
@@ -63,10 +70,34 @@ class OrderGatewayService:
         # the command log to survive restarts and enable queries.
         self._metadata_by_order_id: dict[str, OrderMetadata] = {}
         self._command_log: list[SubmitOrderCommand | ExpireOrderCommand] = []
+        # MVP uses an in-memory idempotency index keyed by (broker, client_order_id).
+        # Production should enforce this with a durable unique constraint
+        # to survive restarts and prevent duplicates across instances.
+        self._idempotency_index: dict[
+            tuple[str, str], tuple[tuple[object, ...], str]
+        ] = {}
 
     def submit_order(self, request: GatewaySubmitOrder) -> GatewayOrder:
         """Submit an order through the gateway into the matching engine."""
         with self._lock:
+            validate_broker_id(request.broker_id)
+
+            if request.client_order_id is not None:
+                idem_key = (request.broker_id, request.client_order_id)
+                fingerprint = build_submit_fingerprint(request)
+                existing = self._idempotency_index.get(idem_key)
+                if existing is not None:
+                    stored_fp, stored_order_id = existing
+                    if stored_fp == fingerprint:
+                        return self._build_order_response(
+                            self._metadata_by_order_id[stored_order_id]
+                        )
+                    msg = (
+                        f"client_order_id '{request.client_order_id}' "
+                        f"already used with different parameters"
+                    )
+                    raise IdempotencyConflictError(msg)
+
             cmd = self._command_factory.create_submit_order_command(request)
             self._command_log.append(cmd)
 
@@ -91,6 +122,11 @@ class OrderGatewayService:
                 quantity=cmd.quantity,
             )
             self._metadata_by_order_id[cmd.order_id] = metadata
+
+            if request.client_order_id is not None:
+                idem_key = (request.broker_id, request.client_order_id)
+                fingerprint = build_submit_fingerprint(request)
+                self._idempotency_index[idem_key] = (fingerprint, cmd.order_id)
 
             return self._build_order_response(metadata)
 
