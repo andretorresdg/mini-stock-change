@@ -10,3 +10,15 @@ services:
     ports:
       - "8000:8000"
     restart: on-failure
+
+  # React frontend served by Nginx. It proxies /api, /health, and
+  # /openapi.json to the api service, so the browser uses one origin.
+  web:
+    build:
+      context: ./web
+      dockerfile: Containerfile
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      - api
+    restart: on-failure
