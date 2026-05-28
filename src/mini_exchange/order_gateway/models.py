@@ -238,3 +238,27 @@ class GatewayOrder:
         object.__setattr__(
             self, "valid_until", _validate_tz_aware(self.valid_until, "valid_until")
         )
+
+
+@dataclass(frozen=True, slots=True)
+class GatewayBookLevel:
+    """An aggregated price level in the order book."""
+
+    price: int
+    quantity: int
+
+    def __post_init__(self) -> None:
+        _validate_positive_int(self.price, "price")
+        _validate_positive_int(self.quantity, "quantity")
+
+
+@dataclass(frozen=True, slots=True)
+class GatewayBookSnapshot:
+    """A snapshot of the current order book state for one symbol."""
+
+    symbol: str
+    bids: tuple[GatewayBookLevel, ...]
+    asks: tuple[GatewayBookLevel, ...]
+
+    def __post_init__(self) -> None:
+        _validate_non_empty(self.symbol, "symbol")

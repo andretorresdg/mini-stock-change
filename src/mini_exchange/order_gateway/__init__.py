@@ -12,6 +12,8 @@ from mini_exchange.order_gateway.errors import (
 )
 from mini_exchange.order_gateway.models import (
     ExpireOrderCommand,
+    GatewayBookLevel,
+    GatewayBookSnapshot,
     GatewayCommandType,
     GatewayOrder,
     GatewayOrderStatus,
@@ -32,6 +34,8 @@ __all__ = [
     "Clock",
     "ExpireOrderCommand",
     "ExpiredOrderError",
+    "GatewayBookLevel",
+    "GatewayBookSnapshot",
     "GatewayCommandType",
     "GatewayOrder",
     "GatewayOrderStatus",

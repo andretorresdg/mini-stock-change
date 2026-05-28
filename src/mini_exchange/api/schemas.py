@@ -137,6 +137,25 @@ class OrderResponse(BaseModel):
     trades: tuple[TradeResponse, ...]
 
 
+class BookLevelResponse(BaseModel):
+    """Response schema for a single order book price level."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    price: int
+    quantity: int
+
+
+class BookSnapshotResponse(BaseModel):
+    """Response schema for an order book snapshot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str
+    bids: tuple[BookLevelResponse, ...]
+    asks: tuple[BookLevelResponse, ...]
+
+
 class ErrorResponse(BaseModel):
     """Response schema for errors."""
 

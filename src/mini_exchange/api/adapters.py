@@ -3,11 +3,14 @@
 from mini_exchange.api.schemas import (
     ApiOrderSide,
     ApiOrderStatus,
+    BookLevelResponse,
+    BookSnapshotResponse,
     OrderResponse,
     SubmitOrderRequest,
     TradeResponse,
 )
 from mini_exchange.order_gateway.models import (
+    GatewayBookSnapshot,
     GatewayOrder,
     GatewayOrderStatus,
     GatewaySubmitOrder,
@@ -49,6 +52,21 @@ def trade_to_response(trade: GatewayTrade) -> TradeResponse:
         seller_broker_id=trade.seller_broker_id,
         price=trade.price,
         quantity=trade.quantity,
+    )
+
+
+def book_snapshot_to_response(snapshot: GatewayBookSnapshot) -> BookSnapshotResponse:
+    """Convert a gateway book snapshot DTO into an API response."""
+    return BookSnapshotResponse(
+        symbol=snapshot.symbol,
+        bids=tuple(
+            BookLevelResponse(price=lvl.price, quantity=lvl.quantity)
+            for lvl in snapshot.bids
+        ),
+        asks=tuple(
+            BookLevelResponse(price=lvl.price, quantity=lvl.quantity)
+            for lvl in snapshot.asks
+        ),
     )
 
 

@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from mini_exchange.api.routers.health import router as health_router
+from mini_exchange.api.routers.market import router as market_router
 from mini_exchange.api.routers.orders import router as orders_router
 from mini_exchange.order_gateway.service import OrderGatewayService
 
@@ -33,4 +34,5 @@ def create_app(
     application.state.order_gateway = order_gateway or OrderGatewayService()
     application.include_router(health_router)
     application.include_router(orders_router)
+    application.include_router(market_router)
     return application

@@ -14,6 +14,8 @@ from mini_exchange.order_gateway.errors import (
 )
 from mini_exchange.order_gateway.models import (
     ExpireOrderCommand,
+    GatewayBookLevel,
+    GatewayBookSnapshot,
     GatewayOrder,
     GatewayOrderStatus,
     GatewaySubmitOrder,
@@ -152,6 +154,29 @@ class OrderGatewayService:
                 msg = "order not found"
                 raise OrderNotFoundError(msg)
             return self._build_order_response(metadata)
+
+    def get_book_snapshot(
+        self, symbol: str, depth: int | None = None
+    ) -> GatewayBookSnapshot:
+        """Return the current order book snapshot for a symbol.
+
+        # MVP exposes a simple aggregated snapshot from in-memory state.
+        # Production market data would usually come from a dedicated feed
+        # or event stream.
+        """
+        symbol = symbol.strip().upper()
+        with self._lock:
+            self._expire_resting_orders()
+            raw = self._engine.snapshot(symbol, depth=depth)
+        bids = tuple(
+            GatewayBookLevel(price=lvl["price"], quantity=lvl["quantity"])
+            for lvl in raw["bids"]
+        )
+        asks = tuple(
+            GatewayBookLevel(price=lvl["price"], quantity=lvl["quantity"])
+            for lvl in raw["asks"]
+        )
+        return GatewayBookSnapshot(symbol=symbol, bids=bids, asks=asks)
 
     def command_log(self) -> tuple[SubmitOrderCommand | ExpireOrderCommand, ...]:
         """Return the full command log as an immutable tuple."""
