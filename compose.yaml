@@ -1,0 +1,12 @@
+# In-memory MVP: run exactly one API process.
+# Scaling to multiple replicas splits the in-memory exchange state.
+# Add PostgreSQL (or another durable store) before scaling horizontally.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deploy/backend.Containerfile
+    ports:
+      - "8000:8000"
+    restart: on-failure

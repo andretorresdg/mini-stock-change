@@ -64,3 +64,26 @@ python -m ruff format --check .
 python -m mypy src
 ```
 
+
+## Docker
+
+> **In-memory deployment — run one worker only.**
+> The backend stores all orders, trades, and exchange state in process memory.
+> Running more than one API process or replica creates independent exchange
+> states that cannot share orders or produce consistent market data.
+> Do **not** use `uvicorn --workers N`, do **not** scale the `api` service
+> with Docker Compose, and do **not** add Gunicorn worker pools.
+> Restarting the backend resets all orders and trades.
+> Multiple workers require durable shared state (e.g. PostgreSQL), which is
+> intentionally not part of this MVP.
+
+```bash
+# Build and start the single-worker API
+docker compose up --build
+
+# Verify the service is alive
+curl http://localhost:8000/health/live
+
+# Stop and remove containers
+docker compose down
+```
