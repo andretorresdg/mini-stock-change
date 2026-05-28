@@ -75,6 +75,7 @@ class OrderGatewayService:
     __slots__ = (
         "_clock",
         "_engine",
+        "_expired_orders",
         "_idempotency",
         "_metadata",
         "_order_trades",
@@ -90,6 +91,7 @@ class OrderGatewayService:
         self._metadata: dict[str, OrderMetadata] = {}
         self._order_trades: dict[str, list[str]] = defaultdict(list)
         self._idempotency: dict[_IdempotencyKey, tuple[_Fingerprint, str]] = {}
+        self._expired_orders: set[str] = set()
 
     def submit_order(
         self, broker_id: str, request: SubmitOrderRequest
@@ -100,6 +102,8 @@ class OrderGatewayService:
         if request.valid_until <= now:
             msg = "order has expired"
             raise ExpiredOrderError(msg)
+
+        self._expire_resting_orders(now)
 
         if request.client_order_id is not None:
             key: _IdempotencyKey = (broker_id, request.client_order_id)
@@ -161,7 +165,22 @@ class OrderGatewayService:
         if meta is None or meta.broker_id != broker_id:
             msg = "order not found"
             raise OrderNotFoundError(msg)
+        self._expire_resting_orders(self._clock())
         return self._build_response(order_id)
+
+    def _expire_resting_orders(self, now: datetime) -> None:
+        """Cancel resting orders whose valid_until has passed."""
+        for order_id, meta in self._metadata.items():
+            if order_id in self._expired_orders:
+                continue
+            if meta.valid_until > now:
+                continue
+            core_order = self._engine.book(meta.symbol).get_order(order_id)
+            assert core_order is not None
+            if not core_order.is_active:
+                continue
+            self._engine.cancel_order(meta.symbol, order_id)
+            self._expired_orders.add(order_id)
 
     def _build_response(self, order_id: str) -> OrderResponse:
         meta = self._metadata[order_id]
@@ -184,6 +203,10 @@ class OrderGatewayService:
             for t in all_trades
             if t.trade_id in order_trade_ids
         )
+        if order_id in self._expired_orders:
+            status = ApiOrderStatus.EXPIRED
+        else:
+            status = _STATUS_MAP[core_order.status]
         return OrderResponse(
             order_id=order_id,
             broker_id=meta.broker_id,
@@ -195,7 +218,7 @@ class OrderGatewayService:
             quantity=meta.quantity,
             remaining_quantity=core_order.remaining,
             filled_quantity=core_order.filled_quantity,
-            status=_STATUS_MAP[core_order.status],
+            status=status,
             valid_until=meta.valid_until,
             trades=trades,
         )

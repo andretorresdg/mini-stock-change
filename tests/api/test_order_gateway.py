@@ -240,3 +240,146 @@ class TestIdempotentOrderGetStatus:
         resp = svc.get_order("broker1", "AAPL-1")
         assert resp.order_id == "AAPL-1"
         assert resp.status == ApiOrderStatus.OPEN
+
+
+class _MutableClock:
+    """A mutable clock for testing time-dependent behavior."""
+
+    def __init__(self, start: datetime) -> None:
+        self.now = start
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, delta: timedelta) -> None:
+        self.now += delta
+
+
+class TestExpiredAskNotMatched:
+    def test_expired_ask_not_matched_by_bid(self) -> None:
+        clock = _MutableClock(datetime(2025, 1, 1, tzinfo=UTC))
+        svc = OrderGatewayService(clock=clock)
+        valid = datetime(2025, 1, 1, 1, 0, 0, tzinfo=UTC)
+        ask = _make_request(side="ASK", price=100, valid_until=valid.isoformat())
+        svc.submit_order("seller", ask)
+        clock.advance(timedelta(hours=2))
+        bid = _make_request(side="BID", price=100)
+        resp = svc.submit_order("buyer", bid)
+        assert resp.status == ApiOrderStatus.OPEN
+        assert resp.trades == ()
+
+
+class TestExpiredBidNotMatched:
+    def test_expired_bid_not_matched_by_ask(self) -> None:
+        clock = _MutableClock(datetime(2025, 1, 1, tzinfo=UTC))
+        svc = OrderGatewayService(clock=clock)
+        valid = datetime(2025, 1, 1, 1, 0, 0, tzinfo=UTC)
+        bid = _make_request(side="BID", price=100, valid_until=valid.isoformat())
+        svc.submit_order("buyer", bid)
+        clock.advance(timedelta(hours=2))
+        ask = _make_request(side="ASK", price=100)
+        resp = svc.submit_order("seller", ask)
+        assert resp.status == ApiOrderStatus.OPEN
+        assert resp.trades == ()
+
+
+class TestStatusChangesToExpired:
+    def test_status_becomes_expired_after_clock_advances(self) -> None:
+        clock = _MutableClock(datetime(2025, 1, 1, tzinfo=UTC))
+        svc = OrderGatewayService(clock=clock)
+        valid = datetime(2025, 1, 1, 1, 0, 0, tzinfo=UTC)
+        req = _make_request(valid_until=valid.isoformat())
+        svc.submit_order("broker1", req)
+        clock.advance(timedelta(hours=2))
+        resp = svc.get_order("broker1", "AAPL-1")
+        assert resp.status == ApiOrderStatus.EXPIRED
+
+
+class TestFilledRemainsFilledAfterExpiry:
+    def test_filled_order_not_expired(self) -> None:
+        clock = _MutableClock(datetime(2025, 1, 1, tzinfo=UTC))
+        svc = OrderGatewayService(clock=clock)
+        valid = datetime(2025, 1, 1, 1, 0, 0, tzinfo=UTC)
+        ask = _make_request(side="ASK", price=100, valid_until=valid.isoformat())
+        svc.submit_order("seller", ask)
+        bid = _make_request(side="BID", price=100)
+        svc.submit_order("buyer", bid)
+        clock.advance(timedelta(hours=2))
+        resp = svc.get_order("seller", "AAPL-1")
+        assert resp.status == ApiOrderStatus.FILLED
+
+
+class TestPartiallyFilledExpires:
+    def test_partially_filled_becomes_expired(self) -> None:
+        clock = _MutableClock(datetime(2025, 1, 1, tzinfo=UTC))
+        svc = OrderGatewayService(clock=clock)
+        valid = datetime(2025, 1, 1, 1, 0, 0, tzinfo=UTC)
+        ask = _make_request(
+            side="ASK", price=100, quantity=20, valid_until=valid.isoformat()
+        )
+        svc.submit_order("seller", ask)
+        bid = _make_request(side="BID", price=100, quantity=5)
+        svc.submit_order("buyer", bid)
+        resp_before = svc.get_order("seller", "AAPL-1")
+        assert resp_before.status == ApiOrderStatus.PARTIALLY_FILLED
+        clock.advance(timedelta(hours=2))
+        resp_after = svc.get_order("seller", "AAPL-1")
+        assert resp_after.status == ApiOrderStatus.EXPIRED
+        assert resp_after.remaining_quantity == 15
+        assert resp_after.filled_quantity == 5
+
+
+class TestExpiredOrderRetrievable:
+    def test_expired_order_still_retrievable_by_broker(self) -> None:
+        clock = _MutableClock(datetime(2025, 1, 1, tzinfo=UTC))
+        svc = OrderGatewayService(clock=clock)
+        valid = datetime(2025, 1, 1, 1, 0, 0, tzinfo=UTC)
+        req = _make_request(valid_until=valid.isoformat())
+        svc.submit_order("broker1", req)
+        clock.advance(timedelta(hours=2))
+        resp = svc.get_order("broker1", "AAPL-1")
+        assert resp.order_id == "AAPL-1"
+        assert resp.status == ApiOrderStatus.EXPIRED
+
+
+class TestWrongBroker404AfterExpiry:
+    def test_wrong_broker_still_404(self) -> None:
+        clock = _MutableClock(datetime(2025, 1, 1, tzinfo=UTC))
+        svc = OrderGatewayService(clock=clock)
+        valid = datetime(2025, 1, 1, 1, 0, 0, tzinfo=UTC)
+        req = _make_request(valid_until=valid.isoformat())
+        svc.submit_order("broker1", req)
+        clock.advance(timedelta(hours=2))
+        with pytest.raises(OrderNotFoundError):
+            svc.get_order("broker2", "AAPL-1")
+
+
+class TestExpiredOrderNotReExpired:
+    def test_already_expired_skipped_on_second_pass(self) -> None:
+        clock = _MutableClock(datetime(2025, 1, 1, tzinfo=UTC))
+        svc = OrderGatewayService(clock=clock)
+        valid = datetime(2025, 1, 1, 1, 0, 0, tzinfo=UTC)
+        req = _make_request(valid_until=valid.isoformat())
+        svc.submit_order("broker1", req)
+        clock.advance(timedelta(hours=2))
+        resp1 = svc.get_order("broker1", "AAPL-1")
+        assert resp1.status == ApiOrderStatus.EXPIRED
+        resp2 = svc.get_order("broker1", "AAPL-1")
+        assert resp2.status == ApiOrderStatus.EXPIRED
+
+
+class TestSubmitRejectionStillWorks:
+    def test_new_order_equal_to_now_rejected(self) -> None:
+        now = datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
+        svc = OrderGatewayService(clock=_fake_clock(now))
+        req = _make_request(valid_until=now.isoformat())
+        with pytest.raises(ExpiredOrderError):
+            svc.submit_order("broker1", req)
+
+    def test_new_order_before_now_rejected(self) -> None:
+        now = datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
+        past = (now - timedelta(hours=1)).isoformat()
+        svc = OrderGatewayService(clock=_fake_clock(now))
+        req = _make_request(valid_until=past)
+        with pytest.raises(ExpiredOrderError):
+            svc.submit_order("broker1", req)
