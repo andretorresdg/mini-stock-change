@@ -28,6 +28,10 @@ _BROKER_PATH = Path(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9._\-]+$")
     "/brokers/{broker_id}/orders",
     response_model=OrderResponse,
     status_code=201,
+    responses={
+        400: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
 )
 def submit_order(
     broker_id: Annotated[str, _BROKER_PATH],
@@ -60,6 +64,9 @@ def submit_order(
 @router.get(
     "/brokers/{broker_id}/orders/{order_id}",
     response_model=OrderResponse,
+    responses={
+        404: {"model": ErrorResponse},
+    },
 )
 def get_order(
     broker_id: Annotated[str, _BROKER_PATH],
