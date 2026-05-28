@@ -1,4 +1,4 @@
-"""Tests for the order submission endpoint."""
+"""Tests for the order endpoints."""
 
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
@@ -171,3 +171,120 @@ class TestGenericGatewayError:
         data = resp.json()
         assert data["code"] == "ORDER_GATEWAY_ERROR"
         assert data["message"] == "something went wrong"
+
+
+# --- GET /api/v1/brokers/{broker_id}/orders/{order_id} ---
+
+
+class TestGetOrderResting:
+    def test_retrieve_resting_order(self) -> None:
+        client = _make_app()
+        client.post(
+            "/api/v1/brokers/broker1/orders",
+            json=_valid_body(side="BID"),
+        )
+        resp = client.get("/api/v1/brokers/broker1/orders/AAPL-1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["order_id"] == "AAPL-1"
+        assert data["status"] == "OPEN"
+        assert data["remaining_quantity"] == 10
+        assert data["trades"] == []
+
+
+class TestGetOrderFilled:
+    def test_retrieve_filled_order(self) -> None:
+        client = _make_app()
+        client.post(
+            "/api/v1/brokers/seller/orders",
+            json=_valid_body(side="ASK", price=100),
+        )
+        client.post(
+            "/api/v1/brokers/buyer/orders",
+            json=_valid_body(side="BID", price=100),
+        )
+        resp = client.get("/api/v1/brokers/seller/orders/AAPL-1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "FILLED"
+        assert data["filled_quantity"] == 10
+
+
+class TestGetOrderPartiallyFilled:
+    def test_retrieve_partially_filled_order(self) -> None:
+        client = _make_app()
+        client.post(
+            "/api/v1/brokers/seller/orders",
+            json=_valid_body(side="ASK", price=100, quantity=20),
+        )
+        client.post(
+            "/api/v1/brokers/buyer/orders",
+            json=_valid_body(side="BID", price=100, quantity=5),
+        )
+        resp = client.get("/api/v1/brokers/seller/orders/AAPL-1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "PARTIALLY_FILLED"
+        assert data["remaining_quantity"] == 15
+        assert data["filled_quantity"] == 5
+
+
+class TestGetOrderIncludesTrades:
+    def test_response_includes_trades(self) -> None:
+        client = _make_app()
+        client.post(
+            "/api/v1/brokers/seller/orders",
+            json=_valid_body(side="ASK", price=100),
+        )
+        client.post(
+            "/api/v1/brokers/buyer/orders",
+            json=_valid_body(side="BID", price=100),
+        )
+        resp = client.get("/api/v1/brokers/buyer/orders/AAPL-2")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["trades"]) == 1
+        assert data["trades"][0]["buyer_order_id"] == "AAPL-2"
+        assert data["trades"][0]["seller_order_id"] == "AAPL-1"
+        assert data["trades"][0]["price"] == 100
+
+
+class TestGetOrderNotFound:
+    def test_unknown_order_returns_404(self) -> None:
+        client = _make_app()
+        resp = client.get("/api/v1/brokers/broker1/orders/no-such")
+        assert resp.status_code == 404
+        data = resp.json()
+        assert data["code"] == "ORDER_NOT_FOUND"
+
+
+class TestGetOrderWrongBroker:
+    def test_wrong_broker_returns_404(self) -> None:
+        client = _make_app()
+        client.post(
+            "/api/v1/brokers/broker1/orders",
+            json=_valid_body(side="BID"),
+        )
+        resp = client.get("/api/v1/brokers/broker2/orders/AAPL-1")
+        assert resp.status_code == 404
+        data = resp.json()
+        assert data["code"] == "ORDER_NOT_FOUND"
+
+
+class TestGetOrderInvalidBrokerPath:
+    @pytest.mark.parametrize(
+        "broker_id",
+        ["a" * 65, "bad broker!"],
+        ids=["too-long", "invalid-chars"],
+    )
+    def test_invalid_broker_returns_422(self, broker_id: str) -> None:
+        client = _make_app()
+        resp = client.get(f"/api/v1/brokers/{broker_id}/orders/X-1")
+        assert resp.status_code == 422
+
+
+class TestGetOrderInvalidOrderId:
+    def test_empty_order_id_returns_method_not_allowed(self) -> None:
+        client = _make_app()
+        resp = client.get("/api/v1/brokers/broker1/orders/")
+        assert resp.status_code == 405
