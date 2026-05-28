@@ -2,9 +2,13 @@
 
 from fastapi import Request
 
-from mini_exchange.api.services.order_gateway import OrderGatewayService
+from mini_exchange.order_gateway.service import OrderGatewayService
 
 
 def get_order_gateway_service(request: Request) -> OrderGatewayService:
     """Retrieve the OrderGatewayService from app state."""
-    return request.app.state.order_gateway_service  # type: ignore[no-any-return]
+    service = getattr(request.app.state, "order_gateway", None)
+    if not isinstance(service, OrderGatewayService):
+        msg = "OrderGatewayService not configured on app state"
+        raise RuntimeError(msg)
+    return service

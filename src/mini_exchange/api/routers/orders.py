@@ -5,19 +5,20 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path
 from fastapi.responses import JSONResponse
 
+from mini_exchange.api.adapters import order_to_response, to_gateway_submit
 from mini_exchange.api.dependencies import get_order_gateway_service
 from mini_exchange.api.schemas import (
     ErrorResponse,
     OrderResponse,
     SubmitOrderRequest,
 )
-from mini_exchange.api.services.order_gateway import (
+from mini_exchange.order_gateway.errors import (
     ExpiredOrderError,
     IdempotencyConflictError,
     OrderGatewayError,
-    OrderGatewayService,
     OrderNotFoundError,
 )
+from mini_exchange.order_gateway.service import OrderGatewayService
 
 router = APIRouter(prefix="/api/v1", tags=["orders"])
 
@@ -40,25 +41,18 @@ def submit_order(
 ) -> OrderResponse | JSONResponse:
     """Submit a new order for the given broker."""
     try:
-        return service.submit_order(broker_id, body)
+        gateway_request = to_gateway_submit(broker_id, body)
+        result = service.submit_order(gateway_request)
+        return order_to_response(result)
     except IdempotencyConflictError as exc:
         error = ErrorResponse(code="IDEMPOTENCY_CONFLICT", message=str(exc))
-        return JSONResponse(
-            status_code=409,
-            content=error.model_dump(),
-        )
+        return JSONResponse(status_code=409, content=error.model_dump())
     except ExpiredOrderError as exc:
         error = ErrorResponse(code="EXPIRED_ORDER", message=str(exc))
-        return JSONResponse(
-            status_code=400,
-            content=error.model_dump(),
-        )
+        return JSONResponse(status_code=400, content=error.model_dump())
     except OrderGatewayError as exc:
         error = ErrorResponse(code="ORDER_GATEWAY_ERROR", message=str(exc))
-        return JSONResponse(
-            status_code=400,
-            content=error.model_dump(),
-        )
+        return JSONResponse(status_code=400, content=error.model_dump())
 
 
 @router.get(
@@ -75,10 +69,8 @@ def get_order(
 ) -> OrderResponse | JSONResponse:
     """Retrieve the current status of an order."""
     try:
-        return service.get_order(broker_id, order_id)
+        result = service.get_order(broker_id, order_id)
+        return order_to_response(result)
     except OrderNotFoundError:
         error = ErrorResponse(code="ORDER_NOT_FOUND", message="order not found")
-        return JSONResponse(
-            status_code=404,
-            content=error.model_dump(),
-        )
+        return JSONResponse(status_code=404, content=error.model_dump())

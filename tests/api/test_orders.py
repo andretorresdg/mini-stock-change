@@ -7,10 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mini_exchange.api.app import create_app
-from mini_exchange.api.services.order_gateway import (
-    OrderGatewayError,
-    OrderGatewayService,
-)
+from mini_exchange.order_gateway.errors import OrderGatewayError
+from mini_exchange.order_gateway.service import OrderGatewayService
 
 
 def _fixed_clock() -> datetime:
@@ -19,7 +17,7 @@ def _fixed_clock() -> datetime:
 
 def _make_app() -> TestClient:
     svc = OrderGatewayService(clock=_fixed_clock)
-    app = create_app(order_gateway_service=svc)
+    app = create_app(order_gateway=svc)
     return TestClient(app)
 
 
@@ -46,7 +44,7 @@ class TestSubmitAsk:
         data = resp.json()
         assert data["side"] == "ASK"
         assert data["status"] == "OPEN"
-        assert data["order_id"] == "AAPL-1"
+        assert data["order_id"] == "AAPL-O-1"
 
 
 class TestSubmitBid:
@@ -65,7 +63,7 @@ class TestResponseFields:
     def test_includes_order_id(self) -> None:
         client = _make_app()
         resp = client.post("/api/v1/brokers/broker1/orders", json=_valid_body())
-        assert resp.json()["order_id"] == "AAPL-1"
+        assert resp.json()["order_id"] == "AAPL-O-1"
 
     def test_includes_broker_id_from_path(self) -> None:
         client = _make_app()
@@ -164,7 +162,7 @@ class TestGenericGatewayError:
     def test_unexpected_gateway_error_returns_400(self) -> None:
         mock_svc = MagicMock(spec=OrderGatewayService)
         mock_svc.submit_order.side_effect = OrderGatewayError("something went wrong")
-        app = create_app(order_gateway_service=mock_svc)
+        app = create_app(order_gateway=mock_svc)
         client = TestClient(app)
         resp = client.post("/api/v1/brokers/broker1/orders", json=_valid_body())
         assert resp.status_code == 400
@@ -183,10 +181,10 @@ class TestGetOrderResting:
             "/api/v1/brokers/broker1/orders",
             json=_valid_body(side="BID"),
         )
-        resp = client.get("/api/v1/brokers/broker1/orders/AAPL-1")
+        resp = client.get("/api/v1/brokers/broker1/orders/AAPL-O-1")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["order_id"] == "AAPL-1"
+        assert data["order_id"] == "AAPL-O-1"
         assert data["status"] == "OPEN"
         assert data["remaining_quantity"] == 10
         assert data["trades"] == []
@@ -203,7 +201,7 @@ class TestGetOrderFilled:
             "/api/v1/brokers/buyer/orders",
             json=_valid_body(side="BID", price=100),
         )
-        resp = client.get("/api/v1/brokers/seller/orders/AAPL-1")
+        resp = client.get("/api/v1/brokers/seller/orders/AAPL-O-1")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "FILLED"
@@ -221,7 +219,7 @@ class TestGetOrderPartiallyFilled:
             "/api/v1/brokers/buyer/orders",
             json=_valid_body(side="BID", price=100, quantity=5),
         )
-        resp = client.get("/api/v1/brokers/seller/orders/AAPL-1")
+        resp = client.get("/api/v1/brokers/seller/orders/AAPL-O-1")
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "PARTIALLY_FILLED"
@@ -240,12 +238,12 @@ class TestGetOrderIncludesTrades:
             "/api/v1/brokers/buyer/orders",
             json=_valid_body(side="BID", price=100),
         )
-        resp = client.get("/api/v1/brokers/buyer/orders/AAPL-2")
+        resp = client.get("/api/v1/brokers/buyer/orders/AAPL-O-2")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["trades"]) == 1
-        assert data["trades"][0]["buyer_order_id"] == "AAPL-2"
-        assert data["trades"][0]["seller_order_id"] == "AAPL-1"
+        assert data["trades"][0]["buyer_order_id"] == "AAPL-O-2"
+        assert data["trades"][0]["seller_order_id"] == "AAPL-O-1"
         assert data["trades"][0]["price"] == 100
 
 
@@ -265,7 +263,7 @@ class TestGetOrderWrongBroker:
             "/api/v1/brokers/broker1/orders",
             json=_valid_body(side="BID"),
         )
-        resp = client.get("/api/v1/brokers/broker2/orders/AAPL-1")
+        resp = client.get("/api/v1/brokers/broker2/orders/AAPL-O-1")
         assert resp.status_code == 404
         data = resp.json()
         assert data["code"] == "ORDER_NOT_FOUND"
