@@ -35,6 +35,10 @@ class OrderNotFoundError(OrderGatewayError):
     """Raised when an order is not found or inaccessible."""
 
 
+class IdempotencyConflictError(OrderGatewayError):
+    """Raised when client_order_id is reused with different parameters."""
+
+
 _STATUS_MAP: dict[OrderStatus, ApiOrderStatus] = {
     OrderStatus.OPEN: ApiOrderStatus.OPEN,
     OrderStatus.PARTIALLY_FILLED: ApiOrderStatus.PARTIALLY_FILLED,
@@ -61,10 +65,20 @@ def _utc_now() -> datetime:
     return datetime.now(tz=UTC)
 
 
+_IdempotencyKey = tuple[str, str]
+_Fingerprint = tuple[str, str, str, str, str, str, int, int]
+
+
 class OrderGatewayService:
     """Adapts broker-facing requests to the deterministic matching engine."""
 
-    __slots__ = ("_clock", "_engine", "_metadata", "_order_trades")
+    __slots__ = (
+        "_clock",
+        "_engine",
+        "_idempotency",
+        "_metadata",
+        "_order_trades",
+    )
 
     def __init__(
         self,
@@ -75,6 +89,7 @@ class OrderGatewayService:
         self._clock = clock or _utc_now
         self._metadata: dict[str, OrderMetadata] = {}
         self._order_trades: dict[str, list[str]] = defaultdict(list)
+        self._idempotency: dict[_IdempotencyKey, tuple[_Fingerprint, str]] = {}
 
     def submit_order(
         self, broker_id: str, request: SubmitOrderRequest
@@ -85,6 +100,18 @@ class OrderGatewayService:
         if request.valid_until <= now:
             msg = "order has expired"
             raise ExpiredOrderError(msg)
+
+        if request.client_order_id is not None:
+            key: _IdempotencyKey = (broker_id, request.client_order_id)
+            fingerprint = self._make_fingerprint(broker_id, request)
+            existing = self._idempotency.get(key)
+            if existing is not None:
+                stored_fp, order_id = existing
+                if stored_fp != fingerprint:
+                    msg = "client_order_id already used with different parameters"
+                    raise IdempotencyConflictError(msg)
+                return self._build_response(order_id)
+
         core_side = request.side.to_core_side()
         report = self._engine.submit_limit_order(
             symbol=request.symbol,
@@ -107,7 +134,26 @@ class OrderGatewayService:
         for trade in report.trades:
             self._order_trades[trade.buyer_order_id].append(trade.trade_id)
             self._order_trades[trade.seller_order_id].append(trade.trade_id)
+
+        if request.client_order_id is not None:
+            key = (broker_id, request.client_order_id)
+            fingerprint = self._make_fingerprint(broker_id, request)
+            self._idempotency[key] = (fingerprint, order.order_id)
+
         return self._build_response(order.order_id)
+
+    @staticmethod
+    def _make_fingerprint(broker_id: str, request: SubmitOrderRequest) -> _Fingerprint:
+        return (
+            broker_id,
+            request.client_order_id or "",
+            request.document_number,
+            request.side.value,
+            request.valid_until.isoformat(),
+            request.symbol,
+            request.price,
+            request.quantity,
+        )
 
     def get_order(self, broker_id: str, order_id: str) -> OrderResponse:
         """Get the current status of an order."""

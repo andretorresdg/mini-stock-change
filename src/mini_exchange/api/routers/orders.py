@@ -13,6 +13,7 @@ from mini_exchange.api.schemas import (
 )
 from mini_exchange.api.services.order_gateway import (
     ExpiredOrderError,
+    IdempotencyConflictError,
     OrderGatewayError,
     OrderGatewayService,
     OrderNotFoundError,
@@ -36,6 +37,12 @@ def submit_order(
     """Submit a new order for the given broker."""
     try:
         return service.submit_order(broker_id, body)
+    except IdempotencyConflictError as exc:
+        error = ErrorResponse(code="IDEMPOTENCY_CONFLICT", message=str(exc))
+        return JSONResponse(
+            status_code=409,
+            content=error.model_dump(),
+        )
     except ExpiredOrderError as exc:
         error = ErrorResponse(code="EXPIRED_ORDER", message=str(exc))
         return JSONResponse(

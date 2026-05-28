@@ -8,6 +8,7 @@ import pytest
 from mini_exchange.api.schemas import ApiOrderSide, ApiOrderStatus, SubmitOrderRequest
 from mini_exchange.api.services.order_gateway import (
     ExpiredOrderError,
+    IdempotencyConflictError,
     OrderGatewayError,
     OrderGatewayService,
     OrderNotFoundError,
@@ -173,3 +174,69 @@ class TestDefaultService:
         req = _make_request(valid_until=future)
         resp = svc.submit_order("broker1", req)
         assert resp.order_id == "AAPL-1"
+
+
+class TestIdempotencyRetry:
+    def test_same_client_order_id_returns_same_order(self) -> None:
+        svc = OrderGatewayService(clock=_fake_clock())
+        req = _make_request(client_order_id="abc-123")
+        resp1 = svc.submit_order("broker1", req)
+        resp2 = svc.submit_order("broker1", req)
+        assert resp1.order_id == resp2.order_id
+
+    def test_retry_does_not_create_additional_trades(self) -> None:
+        svc = OrderGatewayService(clock=_fake_clock())
+        sell = _make_request(side="ASK", price=100, client_order_id="s1")
+        svc.submit_order("seller", sell)
+        buy = _make_request(side="BID", price=100, client_order_id="b1")
+        resp1 = svc.submit_order("buyer", buy)
+        resp2 = svc.submit_order("buyer", buy)
+        assert len(resp1.trades) == 1
+        assert len(resp2.trades) == 1
+        assert resp1.trades[0].trade_id == resp2.trades[0].trade_id
+
+
+class TestIdempotencyConflict:
+    def test_different_price_returns_conflict(self) -> None:
+        svc = OrderGatewayService(clock=_fake_clock())
+        req1 = _make_request(client_order_id="dup", price=100)
+        svc.submit_order("broker1", req1)
+        req2 = _make_request(client_order_id="dup", price=200)
+        with pytest.raises(IdempotencyConflictError):
+            svc.submit_order("broker1", req2)
+
+    def test_different_quantity_returns_conflict(self) -> None:
+        svc = OrderGatewayService(clock=_fake_clock())
+        req1 = _make_request(client_order_id="dup", quantity=10)
+        svc.submit_order("broker1", req1)
+        req2 = _make_request(client_order_id="dup", quantity=20)
+        with pytest.raises(IdempotencyConflictError):
+            svc.submit_order("broker1", req2)
+
+
+class TestIdempotencyBrokerIsolation:
+    def test_different_broker_same_client_order_id(self) -> None:
+        svc = OrderGatewayService(clock=_fake_clock())
+        req = _make_request(client_order_id="shared")
+        resp1 = svc.submit_order("broker1", req)
+        resp2 = svc.submit_order("broker2", req)
+        assert resp1.order_id != resp2.order_id
+
+
+class TestNoClientOrderIdNotIdempotent:
+    def test_submissions_without_client_order_id(self) -> None:
+        svc = OrderGatewayService(clock=_fake_clock())
+        req = _make_request()
+        resp1 = svc.submit_order("broker1", req)
+        resp2 = svc.submit_order("broker1", req)
+        assert resp1.order_id != resp2.order_id
+
+
+class TestIdempotentOrderGetStatus:
+    def test_status_works_for_idempotent_order(self) -> None:
+        svc = OrderGatewayService(clock=_fake_clock())
+        req = _make_request(client_order_id="id1")
+        svc.submit_order("broker1", req)
+        resp = svc.get_order("broker1", "AAPL-1")
+        assert resp.order_id == "AAPL-1"
+        assert resp.status == ApiOrderStatus.OPEN

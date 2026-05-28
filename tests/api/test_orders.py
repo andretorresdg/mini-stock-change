@@ -288,3 +288,16 @@ class TestGetOrderInvalidOrderId:
         client = _make_app()
         resp = client.get("/api/v1/brokers/broker1/orders/")
         assert resp.status_code == 405
+
+
+class TestIdempotencyConflictEndpoint:
+    def test_conflict_returns_409(self) -> None:
+        client = _make_app()
+        body = _valid_body(client_order_id="dup1", price=100)
+        resp1 = client.post("/api/v1/brokers/broker1/orders", json=body)
+        assert resp1.status_code == 201
+        body2 = _valid_body(client_order_id="dup1", price=200)
+        resp2 = client.post("/api/v1/brokers/broker1/orders", json=body2)
+        assert resp2.status_code == 409
+        data = resp2.json()
+        assert data["code"] == "IDEMPOTENCY_CONFLICT"
