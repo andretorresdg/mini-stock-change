@@ -47,6 +47,11 @@ assert len(report.trades) == 1
 assert report.trades[0].price == 1000
 ```
 
+## Frontend
+
+A React + TypeScript MVP UI lives in [`web/`](web/README.md).
+See [web/README.md](web/README.md) for setup, configuration, and development instructions.
+
 ## Development
 
 Requires Python >= 3.12.
@@ -58,3 +63,4 @@ python -m ruff check .
 python -m ruff format --check .
 python -m mypy src
 ```
+

@@ -107,6 +107,11 @@ describe("OrderLookupForm – rendering", () => {
     renderForm();
     expect(screen.getByRole("button", { name: /look up order/i })).toBeInTheDocument();
   });
+
+  it("renders ownership hint explaining the order must belong to the broker/user", () => {
+    renderForm();
+    expect(screen.getByText(/order must belong to the specified broker\/user/i)).toBeInTheDocument();
+  });
 });
 
 // ── Validation / button state ─────────────────────────────────────────────────

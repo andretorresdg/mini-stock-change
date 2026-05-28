@@ -113,6 +113,10 @@ export default function OrderLookupForm() {
 
   return (
     <div>
+      <p style={{ fontSize: "0.875rem", color: "#a0aec0", marginBottom: "1.25rem" }}>
+        Enter the broker/user identifier and the order ID you received at submission. The
+        order must belong to the specified broker/user.
+      </p>
       <form onSubmit={handleSubmit} noValidate>
         {/* Broker / username */}
         <div style={fieldStyle}>
