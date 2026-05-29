@@ -1,0 +1,86 @@
+"""Side book: one side (BUY or SELL) of an order book."""
+
+from __future__ import annotations
+
+import heapq
+from collections import deque
+
+from mini_exchange.orderbook.models import Order, Side
+
+
+class SideBook:
+    """Manages price levels and FIFO ordering for one side of the book."""
+
+    __slots__ = ("_heap", "_levels", "_side")
+
+    def __init__(self, side: Side) -> None:
+        self._side = side
+        self._levels: dict[int, deque[Order]] = {}
+        self._heap: list[int] = []
+
+    def add(self, order: Order) -> None:
+        """Add an active order to the book."""
+        if order.side != self._side:
+            msg = f"expected {self._side.value} order, got {order.side.value}"
+            raise ValueError(msg)
+        if not order.is_active:
+            msg = "cannot add an inactive order"
+            raise ValueError(msg)
+        price = order.price
+        if price not in self._levels:
+            self._levels[price] = deque()
+            heap_key = -price if self._side == Side.BUY else price
+            heapq.heappush(self._heap, heap_key)
+        self._levels[price].append(order)
+
+    def best_price(self) -> int | None:
+        """Return the best price, lazily discarding stale levels."""
+        while self._heap:
+            raw = self._heap[0]
+            price = -raw if self._side == Side.BUY else raw
+            level = self._levels.get(price)
+            if level is None:
+                heapq.heappop(self._heap)
+                continue
+            self._clean_inactive_head(level)
+            if level:
+                return price
+            del self._levels[price]
+            heapq.heappop(self._heap)
+        return None
+
+    def peek_best_order(self) -> Order | None:
+        """Return the best-priority order without removing it."""
+        price = self.best_price()
+        if price is None:
+            return None
+        level = self._levels[price]
+        return level[0]
+
+    def discard_inactive_head(self, price: int) -> None:
+        """Remove inactive orders from the front of a price level."""
+        level = self._levels.get(price)
+        if level is None:
+            return
+        self._clean_inactive_head(level)
+        if not level:
+            del self._levels[price]
+
+    def snapshot_levels(self) -> list[dict[str, int]]:
+        """Aggregate remaining active quantity by price level."""
+        result: list[dict[str, int]] = []
+        for price, level in self._levels.items():
+            total = sum(o.remaining for o in level if o.is_active)
+            if total > 0:
+                result.append({"price": price, "quantity": total})
+        if self._side == Side.BUY:
+            result.sort(key=lambda x: x["price"], reverse=True)
+        else:
+            result.sort(key=lambda x: x["price"])
+        return result
+
+    @staticmethod
+    def _clean_inactive_head(level: deque[Order]) -> None:
+        """Remove inactive orders from the front of a deque."""
+        while level and not level[0].is_active:
+            level.popleft()
