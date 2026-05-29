@@ -107,7 +107,8 @@ All scripts run from the repository root.
 |--------|---------|
 | `scripts/run-mvp.sh` / `run-mvp.ps1` | Build and start API + web with Docker Compose |
 | `scripts/smoke-test.sh` / `smoke-test.ps1` | Hit health, order, and market endpoints |
-| `scripts/check.sh` / `check.ps1` | Run backend + frontend quality gates |
+| `scripts/check.sh` / `check.ps1` | Run backend + frontend quality gates and `docker compose build` |
+| `requirements/server.lock` | Pinned Python runtime deps for the API container (regenerate with `pip-compile --extra server --output-file requirements/server.lock --strip-extras pyproject.toml`) |
 
 Override smoke-test targets if needed:
 

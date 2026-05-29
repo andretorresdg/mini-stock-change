@@ -33,5 +33,8 @@ Invoke-Step "Frontend: eslint" { npm run lint }
 Invoke-Step "Frontend: typecheck" { npm run typecheck }
 Invoke-Step "Frontend: production build" { npm run build }
 
+Set-Location $Root
+Invoke-Step "Containers: docker compose build" { docker compose build }
+
 Write-Host ""
 Write-Host "All checks passed."
