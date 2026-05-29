@@ -1,8 +1,61 @@
 # mini-exchange web
 
-A React + TypeScript + Vite MVP user interface for the [mini-exchange](../README.md) in-memory order book backend.
+React + TypeScript + Vite UI for the [mini-exchange](../README.md) in-memory
+order book backend.
+
+## Running the UI
+
+### With Docker (recommended)
+
+From the repository root, start the full stack:
+
+```bash
+./scripts/run-mvp.sh
+```
+
+```powershell
+.\scripts\run-mvp.ps1
+```
+
+Open http://localhost:3000. The Nginx container serves the built SPA and proxies
+API routes to the backend, so the browser uses one origin.
+
+### Local development (Vite)
+
+Use this when editing frontend code with hot reload.
+
+1. Start the API on port 8000 (see root [README](../README.md)).
+2. Install and run the dev server:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+The app is at http://localhost:5173. It calls http://localhost:8000 by default.
+
+Set `VITE_API_BASE_URL` to point elsewhere:
+
+```bash
+VITE_API_BASE_URL=https://api.example.com npm run dev
+```
+
+Or create `web/.env.local`:
+
+```
+VITE_API_BASE_URL=https://api.example.com
+```
 
 ## Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/submit-order` | Submit Order | Place a limit order |
+| `/status` | Order Status | Look up an order by broker + order ID |
+| `/market` | Market | Order book snapshot and recent trades for a symbol |
+
+The home route `/` redirects to `/submit-order`.
 
 ### Submit Order (`/submit-order`)
 
@@ -55,82 +108,68 @@ Required fields:
 | Broker / username | Must be the broker/user who submitted the order |
 | Order ID | The ID returned by the exchange at submission |
 
-Displayed information: order ID, broker, document number, side, symbol, unit price (formatted as decimal), quantity, remaining quantity, filled quantity, status, valid-until, and any executed trades.
+Displayed information: order ID, broker, document number, side, symbol, unit
+price (formatted as decimal), quantity, remaining quantity, filled quantity,
+status, valid-until (or **No expiration (GTC)**), and any executed trades.
 
 #### Auto-refresh
 
 - Off by default.
 - When enabled, polls every **5 seconds**.
-- Stops automatically when the order reaches a terminal status (`FILLED`, `CANCELED`, `EXPIRED`).
-- This MVP uses HTTP polling. A production UI would use WebSocket or server-sent events for lower latency and reduced server load.
+- Stops automatically when the order reaches a terminal status (`FILLED`,
+  `CANCELED`, `EXPIRED`).
+- This MVP uses HTTP polling. A production UI would use WebSocket or
+  server-sent events for lower latency and reduced server load.
 
-## Getting Started
+### Market (`/market`)
 
-### Install dependencies
+Public market data for a symbol (no broker authentication required).
 
-```bash
-npm install
-```
+1. Enter a stock symbol (1–4 letters).
+2. Load the **order book snapshot** — aggregated bid and ask levels with total
+   quantity at each price.
+3. Load **recent trades** — newest trades first (trade ID, sequence, price,
+   quantity). Broker IDs and document numbers are not shown.
 
-### Run the dev server
+API backing: `GET /api/v1/market/{symbol}/book` and
+`GET /api/v1/market/{symbol}/trades`. See [docs/api.md](../docs/api.md).
 
-```bash
-npm run dev
-```
+## API integration
 
-The app is served at `http://localhost:5173` by default.
+The typed client lives in `src/api/client.ts`. In Docker, `VITE_API_BASE_URL`
+is empty so requests use relative URLs (`/api/...`) through the Nginx proxy.
+In local dev, the default base URL is `http://localhost:8000`.
 
-### Configure the API base URL
+Broker order endpoints:
 
-The frontend calls `http://localhost:8000` by default.
-
-Set `VITE_API_BASE_URL` to point to a different backend:
-
-```bash
-VITE_API_BASE_URL=https://api.example.com npm run dev
-```
-
-You can also create a `.env.local` file in this directory:
-
-```
-VITE_API_BASE_URL=https://api.example.com
-```
+- `POST /api/v1/brokers/{broker_id}/orders`
+- `GET /api/v1/brokers/{broker_id}/orders/{order_id}`
 
 ## Development
 
-### Run tests
+Run quality gates from the repo root (includes frontend checks):
 
 ```bash
-npm test
+./scripts/check.sh
 ```
 
-### Run tests with coverage
-
-```bash
-npm run test:coverage
+```powershell
+.\scripts\check.ps1
 ```
 
-Coverage must remain at 100%.
-
-### Lint
+Or from this directory only:
 
 ```bash
+npm test              # vitest
+npm run test:coverage # 100% coverage required
 npm run lint
-```
-
-### Type-check
-
-```bash
 npm run typecheck
-```
-
-### Build for production
-
-```bash
 npm run build
 ```
 
-## Tech Stack
+Manual browser QA: [docs/manual-qa.md](../docs/manual-qa.md).
+
+## Tech stack
 
 | Tool | Purpose |
 |------|---------|
