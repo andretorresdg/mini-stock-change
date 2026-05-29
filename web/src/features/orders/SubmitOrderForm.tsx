@@ -2,30 +2,23 @@ import { useState } from "react";
 import { ApiClientError, submitOrder } from "../../api/client";
 import type { OrderResponse, OrderSide } from "../../api/types";
 import {
-  buildDefaultValidUntil,
   normalizePriceDisplay,
+  PRICE_DOT_HINT,
   priceToCents,
   quantityToApiInteger,
   sanitizePriceInput,
   sanitizeQuantityInput,
   sanitizeSymbolInput,
+  utcDateTimeLocalToIso,
   validateBrokerId,
   validateDocumentNumber,
+  validateExpiration,
   validatePrice,
   validateQuantity,
   validateSymbol,
 } from "./validation";
 
-// backend requires valid_until.
-// MVP uses a simple validity window instead of advanced order duration types.
-const VALIDITY_OPTIONS = [
-  { label: "15 minutes", minutes: 15 },
-  { label: "1 hour", minutes: 60 },
-  { label: "4 hours", minutes: 240 },
-  { label: "1 day", minutes: 1440 },
-] as const;
-
-const DEFAULT_VALIDITY_MINUTES = 60;
+type ValidityMode = "GTC" | "EXPIRES";
 
 // The UI generates this idempotency key so users do not need to manage retry
 // IDs manually. Broker API clients may still send their own client_order_id.
@@ -36,6 +29,10 @@ function generateClientOrderId(): string {
   return `cli-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function formatValidUntil(value: string | null): string {
+  return value === null ? "No expiration (GTC)" : value;
+}
+
 interface FormState {
   brokerId: string;
   documentNumber: string;
@@ -43,7 +40,8 @@ interface FormState {
   symbol: string;
   price: string;
   quantity: string;
-  validityMinutes: number;
+  validityMode: ValidityMode;
+  expiresAt: string;
 }
 
 interface FormErrors {
@@ -52,6 +50,7 @@ interface FormErrors {
   symbol: string | null;
   price: string | null;
   quantity: string | null;
+  expiration: string | null;
 }
 
 type SubmitStatus =
@@ -67,6 +66,8 @@ function validate(state: FormState): FormErrors {
     symbol: validateSymbol(state.symbol),
     price: validatePrice(state.price),
     quantity: validateQuantity(state.quantity),
+    expiration:
+      state.validityMode === "EXPIRES" ? validateExpiration(state.expiresAt) : null,
   };
 }
 
@@ -81,7 +82,8 @@ const INITIAL_FORM: FormState = {
   symbol: "",
   price: "",
   quantity: "",
-  validityMinutes: DEFAULT_VALIDITY_MINUTES,
+  validityMode: "GTC",
+  expiresAt: "",
 };
 
 const inputStyle: React.CSSProperties = {
@@ -130,7 +132,8 @@ export default function SubmitOrderForm() {
     if (!formValid || isPending) return;
     setStatus({ kind: "pending" });
     try {
-      const validUntil = buildDefaultValidUntil(form.validityMinutes);
+      const validUntil =
+        form.validityMode === "GTC" ? null : utcDateTimeLocalToIso(form.expiresAt);
       const result = await submitOrder(form.brokerId, {
         client_order_id: generateClientOrderId(),
         document_number: form.documentNumber,
@@ -179,6 +182,8 @@ export default function SubmitOrderForm() {
           <dd data-testid="success-order-id">{order.order_id}</dd>
           <dt style={{ color: "#a0aec0" }}>Status</dt>
           <dd data-testid="success-status">{order.status}</dd>
+          <dt style={{ color: "#a0aec0" }}>Validity</dt>
+          <dd data-testid="success-validity">{formatValidUntil(order.valid_until)}</dd>
           <dt style={{ color: "#a0aec0" }}>Remaining</dt>
           <dd data-testid="success-remaining">{order.remaining_quantity}</dd>
           <dt style={{ color: "#a0aec0" }}>Filled</dt>
@@ -376,16 +381,23 @@ export default function SubmitOrderForm() {
         )}
       </div>
 
-      {/* Unit price */}
+      {/* Unit price (USD) */}
       <div style={fieldStyle}>
         <label htmlFor="price" style={labelStyle}>
-          Unit price
+          Unit price (USD)
         </label>
+        <span
+          id="priceHelp"
+          style={{ color: "#718096", fontSize: "0.8rem", display: "block" }}
+        >
+          {PRICE_DOT_HINT}
+        </span>
         <input
           id="price"
           type="text"
           inputMode="decimal"
           autoComplete="off"
+          placeholder="10.00"
           value={form.price}
           onChange={(e) => {
             const sanitized = sanitizePriceInput(e.target.value);
@@ -397,7 +409,9 @@ export default function SubmitOrderForm() {
             setForm((f) => ({ ...f, price: normalized }));
             touch("price");
           }}
-          aria-describedby={touched.price && errors.price ? "priceError" : undefined}
+          aria-describedby={
+            touched.price && errors.price ? "priceHelp priceError" : "priceHelp"
+          }
           style={inputStyle}
         />
         {touched.price && errors.price && (
@@ -434,26 +448,59 @@ export default function SubmitOrderForm() {
         )}
       </div>
 
-      {/* Validity window */}
+      {/* Order validity */}
       <div style={fieldStyle}>
-        <label htmlFor="validityMinutes" style={labelStyle}>
+        <label htmlFor="validityMode" style={labelStyle}>
           Order validity
         </label>
         <select
-          id="validityMinutes"
-          value={form.validityMinutes}
+          id="validityMode"
+          value={form.validityMode}
           onChange={(e) =>
-            setForm((f) => ({ ...f, validityMinutes: parseInt(e.target.value, 10) }))
+            setForm((f) => ({ ...f, validityMode: e.target.value as ValidityMode }))
           }
           style={inputStyle}
         >
-          {VALIDITY_OPTIONS.map((opt) => (
-            <option key={opt.minutes} value={opt.minutes}>
-              {opt.label}
-            </option>
-          ))}
+          <option value="GTC">No expiration (GTC)</option>
+          <option value="EXPIRES">Expires at specific UTC date/time</option>
         </select>
       </div>
+
+      {/* Specific expiration (only when EXPIRES mode is selected) */}
+      {form.validityMode === "EXPIRES" && (
+        <div style={fieldStyle}>
+          <label htmlFor="expiresAt" style={labelStyle}>
+            Expiration date and time (UTC)
+          </label>
+          <span
+            id="expiresAtHelp"
+            style={{ color: "#718096", fontSize: "0.8rem", display: "block" }}
+          >
+            Times are interpreted as UTC.
+          </span>
+          <input
+            id="expiresAt"
+            type="datetime-local"
+            value={form.expiresAt}
+            onChange={(e) => {
+              const value = e.target.value;
+              setForm((f) => ({ ...f, expiresAt: value }));
+              touch("expiration");
+            }}
+            aria-describedby={
+              touched.expiration && errors.expiration
+                ? "expiresAtHelp expiresAtError"
+                : "expiresAtHelp"
+            }
+            style={inputStyle}
+          />
+          {touched.expiration && errors.expiration && (
+            <span id="expiresAtError" role="alert" style={errorStyle}>
+              {errors.expiration}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Order preview */}
       <section
@@ -488,7 +535,7 @@ export default function SubmitOrderForm() {
           <dd data-testid="preview-price">{previewPrice}</dd>
           <dt style={{ color: "#718096" }}>Quantity</dt>
           <dd data-testid="preview-quantity">{previewQuantity}</dd>
-          <dt style={{ color: "#718096" }}>Est. notional</dt>
+          <dt style={{ color: "#718096" }}>Estimated notional (USD)</dt>
           <dd data-testid="preview-notional">{notional}</dd>
         </dl>
       </section>

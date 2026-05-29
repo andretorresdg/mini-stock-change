@@ -42,7 +42,8 @@ class OrderCommandFactory:
         validate_broker_id(request.broker_id)
         received_at = self._clock().astimezone(UTC)
 
-        if request.valid_until <= received_at:
+        # A None valid_until is a GTC order and never expires at submission.
+        if request.valid_until is not None and request.valid_until <= received_at:
             msg = "order has expired at submission time"
             raise ExpiredOrderError(msg)
 

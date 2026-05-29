@@ -221,6 +221,33 @@ class TestMultipleExpirationsOrdered:
         assert expire_cmds[0].order_id < expire_cmds[1].order_id
 
 
+class TestGtcOrdersDoNotExpire:
+    def test_gtc_order_not_expired_after_clock_advances(self) -> None:
+        clock = _MutableClock(_NOW)
+        svc = _service(clock)
+        submitted = svc.submit_order(_ask(valid_until=None))
+        clock.now = _NOW + timedelta(days=3650)
+        result = svc.get_order("seller", submitted.order_id)
+        assert result.status == GatewayOrderStatus.OPEN
+        assert result.valid_until is None
+
+    def test_gtc_order_can_be_matched_later(self) -> None:
+        clock = _MutableClock(_NOW)
+        svc = _service(clock)
+        svc.submit_order(_ask(valid_until=None, price=100, quantity=10))
+        clock.now = _NOW + timedelta(days=30)
+        result = svc.submit_order(_bid(price=100, quantity=10, valid_until=None))
+        assert result.status == GatewayOrderStatus.FILLED
+        assert result.filled_quantity == 10
+        assert len(result.trades) == 1
+
+    def test_gtc_response_reports_null_valid_until(self) -> None:
+        clock = _MutableClock(_NOW)
+        svc = _service(clock)
+        result = svc.submit_order(_ask(valid_until=None))
+        assert result.valid_until is None
+
+
 class TestExpiredOrdersNotInLaterTrades:
     def test_expired_order_not_in_later_trade_response(self) -> None:
         clock = _MutableClock(_NOW)

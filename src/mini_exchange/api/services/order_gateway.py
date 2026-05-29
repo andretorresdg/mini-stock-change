@@ -56,7 +56,7 @@ class OrderMetadata:
     document_number: str
     side: ApiOrderSide
     symbol: str
-    valid_until: datetime
+    valid_until: datetime | None
     price: int
     quantity: int
 
@@ -99,7 +99,8 @@ class OrderGatewayService:
         """Submit a new order through the gateway."""
         self._validate_broker_id(broker_id)
         now = self._clock()
-        if request.valid_until <= now:
+        # A None valid_until is a GTC order and never expires at submission.
+        if request.valid_until is not None and request.valid_until <= now:
             msg = "order has expired"
             raise ExpiredOrderError(msg)
 
@@ -148,12 +149,17 @@ class OrderGatewayService:
 
     @staticmethod
     def _make_fingerprint(broker_id: str, request: SubmitOrderRequest) -> _Fingerprint:
+        valid_until = (
+            request.valid_until.isoformat()
+            if request.valid_until is not None
+            else "GTC"
+        )
         return (
             broker_id,
             request.client_order_id or "",
             request.document_number,
             request.side.value,
-            request.valid_until.isoformat(),
+            valid_until,
             request.symbol,
             request.price,
             request.quantity,
@@ -173,7 +179,8 @@ class OrderGatewayService:
         for order_id, meta in self._metadata.items():
             if order_id in self._expired_orders:
                 continue
-            if meta.valid_until > now:
+            # GTC orders (valid_until is None) never expire on their own.
+            if meta.valid_until is None or meta.valid_until > now:
                 continue
             core_order = self._engine.book(meta.symbol).get_order(order_id)
             assert core_order is not None

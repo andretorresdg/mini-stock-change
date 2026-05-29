@@ -53,7 +53,7 @@ class SubmitOrderRequest(BaseModel):
     client_order_id: str | None = None
     document_number: Annotated[str, Field(min_length=3, max_length=32)]
     side: ApiOrderSide
-    valid_until: datetime
+    valid_until: datetime | None = None
     symbol: Annotated[str, Field(max_length=16)]
     price: Annotated[int, Field(strict=True, gt=0)]
     quantity: Annotated[int, Field(strict=True, gt=0)]
@@ -97,7 +97,10 @@ class SubmitOrderRequest(BaseModel):
 
     @field_validator("valid_until")
     @classmethod
-    def _validate_valid_until(cls, v: datetime) -> datetime:
+    def _validate_valid_until(cls, v: datetime | None) -> datetime | None:
+        # A null valid_until means GTC (no expiration).
+        if v is None:
+            return None
         if v.tzinfo is None:
             msg = "valid_until must be timezone-aware"
             raise ValueError(msg)
@@ -136,7 +139,7 @@ class OrderResponse(BaseModel):
     remaining_quantity: int
     filled_quantity: int
     status: ApiOrderStatus
-    valid_until: datetime
+    valid_until: datetime | None
     trades: tuple[TradeResponse, ...]
 
 

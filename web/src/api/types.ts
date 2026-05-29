@@ -11,7 +11,7 @@ export interface SubmitOrderRequest {
   client_order_id: string | null;
   document_number: string;
   side: OrderSide;
-  valid_until: string;
+  valid_until: string | null;
   symbol: string;
   price: number;
   quantity: number;
@@ -41,7 +41,7 @@ export interface OrderResponse {
   remaining_quantity: number;
   filled_quantity: number;
   status: OrderStatus;
-  valid_until: string;
+  valid_until: string | null;
   trades: TradeResponse[];
 }
 

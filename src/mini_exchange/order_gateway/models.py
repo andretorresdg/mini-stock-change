@@ -48,6 +48,13 @@ def _validate_tz_aware(value: datetime, name: str) -> datetime:
     return value.astimezone(UTC)
 
 
+def _validate_tz_aware_optional(value: datetime | None, name: str) -> datetime | None:
+    # A None valid_until represents a GTC (no expiration) order.
+    if value is None:
+        return None
+    return _validate_tz_aware(value, name)
+
+
 @dataclass(frozen=True, slots=True)
 class GatewaySubmitOrder:
     """Input DTO for submitting an order through the gateway."""
@@ -56,7 +63,7 @@ class GatewaySubmitOrder:
     document_number: str
     client_order_id: str | None
     side: Side
-    valid_until: datetime
+    valid_until: datetime | None
     symbol: str
     price: int
     quantity: int
@@ -69,7 +76,9 @@ class GatewaySubmitOrder:
             msg = "side must be a valid Side"
             raise TypeError(msg)
         object.__setattr__(
-            self, "valid_until", _validate_tz_aware(self.valid_until, "valid_until")
+            self,
+            "valid_until",
+            _validate_tz_aware_optional(self.valid_until, "valid_until"),
         )
         object.__setattr__(self, "symbol", self.symbol.strip().upper())
         _validate_positive_int(self.price, "price")
@@ -88,7 +97,7 @@ class SubmitOrderCommand:
     client_order_id: str | None
     order_id: str
     side: Side
-    valid_until: datetime
+    valid_until: datetime | None
     symbol: str
     price: int
     quantity: int
@@ -108,7 +117,9 @@ class SubmitOrderCommand:
             msg = "side must be a valid Side"
             raise TypeError(msg)
         object.__setattr__(
-            self, "valid_until", _validate_tz_aware(self.valid_until, "valid_until")
+            self,
+            "valid_until",
+            _validate_tz_aware_optional(self.valid_until, "valid_until"),
         )
         object.__setattr__(self, "symbol", self.symbol.strip().upper())
         _validate_non_empty(self.symbol, "symbol")
@@ -155,7 +166,7 @@ class OrderMetadata:
     document_number: str
     client_order_id: str | None
     side: Side
-    valid_until: datetime
+    valid_until: datetime | None
     symbol: str
     price: int
     quantity: int
@@ -169,7 +180,7 @@ class OrderMetadata:
         if not isinstance(self.side, Side):
             msg = "side must be a valid Side"
             raise TypeError(msg)
-        self.valid_until = _validate_tz_aware(self.valid_until, "valid_until")
+        self.valid_until = _validate_tz_aware_optional(self.valid_until, "valid_until")
         self.symbol = self.symbol.strip().upper()
         _validate_positive_int(self.price, "price")
         _validate_positive_int(self.quantity, "quantity")
@@ -216,7 +227,7 @@ class GatewayOrder:
     remaining_quantity: int
     filled_quantity: int
     status: GatewayOrderStatus
-    valid_until: datetime
+    valid_until: datetime | None
     trades: tuple[GatewayTrade, ...]
 
     def __post_init__(self) -> None:
@@ -236,7 +247,9 @@ class GatewayOrder:
             msg = "remaining_quantity + filled_quantity must not exceed quantity"
             raise ValueError(msg)
         object.__setattr__(
-            self, "valid_until", _validate_tz_aware(self.valid_until, "valid_until")
+            self,
+            "valid_until",
+            _validate_tz_aware_optional(self.valid_until, "valid_until"),
         )
 
 

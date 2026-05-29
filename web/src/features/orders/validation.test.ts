@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildDefaultValidUntil,
   normalizePriceDisplay,
   priceToCents,
   quantityToApiInteger,
   sanitizePriceInput,
   sanitizeQuantityInput,
   sanitizeSymbolInput,
+  utcDateTimeLocalToIso,
   validateBrokerId,
   validateDocumentNumber,
+  validateExpiration,
   validateOrderId,
   validatePrice,
   validateQuantity,
@@ -353,33 +354,35 @@ describe("validateOrderId", () => {
   });
 });
 
-// ── Validity window ───────────────────────────────────────────────────────────
+// ── Expiration (UTC) ──────────────────────────────────────────────────────────
 
-describe("buildDefaultValidUntil", () => {
-  const FIXED_NOW = new Date("2030-01-01T12:00:00.000Z");
+describe("utcDateTimeLocalToIso", () => {
+  it("treats a datetime-local value as UTC and appends Z", () => {
+    expect(utcDateTimeLocalToIso("2026-05-28T15:30")).toBe("2026-05-28T15:30:00Z");
+  });
+
+  it("keeps seconds when present and appends Z", () => {
+    expect(utcDateTimeLocalToIso("2026-05-28T15:30:45")).toBe("2026-05-28T15:30:45Z");
+  });
+});
+
+describe("validateExpiration", () => {
+  const FIXED_NOW = new Date("2026-01-01T12:00:00.000Z");
   const fixedClock = () => FIXED_NOW;
 
-  it("adds 60 minutes by default", () => {
-    const result = buildDefaultValidUntil(undefined, fixedClock);
-    expect(result).toBe("2030-01-01T13:00:00.000Z");
+  it("returns error when empty", () => {
+    expect(validateExpiration("", fixedClock)).toMatch(/required/i);
   });
 
-  it("adds a custom number of minutes", () => {
-    const result = buildDefaultValidUntil(30, fixedClock);
-    expect(result).toBe("2030-01-01T12:30:00.000Z");
+  it("returns error for an invalid date", () => {
+    expect(validateExpiration("not-a-date", fixedClock)).not.toBeNull();
   });
 
-  it("returns an ISO string", () => {
-    const result = buildDefaultValidUntil(60, fixedClock);
-    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  it("returns error when in the past", () => {
+    expect(validateExpiration("2025-01-01T00:00", fixedClock)).toMatch(/future/i);
   });
 
-  it("uses real clock when no clock provided", () => {
-    const before = Date.now();
-    const result = buildDefaultValidUntil(60);
-    const after = Date.now();
-    const resultMs = new Date(result).getTime();
-    expect(resultMs).toBeGreaterThanOrEqual(before + 60 * 60 * 1000);
-    expect(resultMs).toBeLessThanOrEqual(after + 60 * 60 * 1000);
+  it("returns null for a future UTC datetime", () => {
+    expect(validateExpiration("2026-06-01T00:00", fixedClock)).toBeNull();
   });
 });

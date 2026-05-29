@@ -73,6 +73,27 @@ class TestValidUntil:
         with pytest.raises(ValidationError, match="timezone-aware"):
             _valid_request(valid_until="2030-01-01T00:00:00")
 
+    def test_missing_valid_until_accepted_as_none(self) -> None:
+        req = SubmitOrderRequest.model_validate(
+            {
+                "document_number": "DOC-123",
+                "side": "BID",
+                "symbol": "AAPL",
+                "price": 100,
+                "quantity": 10,
+            }
+        )
+        assert req.valid_until is None
+
+    def test_explicit_null_valid_until_accepted_as_none(self) -> None:
+        req = _valid_request(valid_until=None)
+        assert req.valid_until is None
+
+    def test_timezone_aware_valid_until_accepted(self) -> None:
+        req = _valid_request(valid_until="2030-01-01T00:00:00Z")
+        assert req.valid_until is not None
+        assert req.valid_until.tzinfo == UTC
+
 
 class TestDocumentNumberValidation:
     def test_empty_rejected(self) -> None:

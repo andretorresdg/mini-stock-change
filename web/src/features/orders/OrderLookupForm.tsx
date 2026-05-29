@@ -333,7 +333,9 @@ export default function OrderLookupForm() {
             </dd>
 
             <dt style={{ color: "#a0aec0" }}>Valid until</dt>
-            <dd data-testid="detail-valid-until">{data.valid_until}</dd>
+            <dd data-testid="detail-valid-until">
+              {data.valid_until ?? "No expiration (GTC)"}
+            </dd>
           </dl>
 
           {/* Trades */}

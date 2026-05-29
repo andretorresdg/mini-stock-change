@@ -391,6 +391,22 @@ describe("OrderLookupForm – order details", () => {
     });
   });
 
+  it("renders No expiration (GTC) instead of raw null", async () => {
+    vi.mocked(apiClient.getOrder).mockResolvedValue({
+      ...OPEN_ORDER,
+      valid_until: null,
+    });
+    renderForm();
+    fillForm();
+    await submitLookup();
+    await waitFor(() => {
+      expect(screen.getByTestId("detail-valid-until")).toHaveTextContent(
+        /no expiration/i,
+      );
+    });
+    expect(screen.getByTestId("detail-valid-until")).not.toHaveTextContent("null");
+  });
+
   it("renders client_order_id when present", async () => {
     vi.mocked(apiClient.getOrder).mockResolvedValue(ORDER_WITH_CLIENT_ID);
     renderForm();

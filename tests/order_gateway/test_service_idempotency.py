@@ -55,6 +55,19 @@ class TestIdempotentRetry:
         r2 = svc.submit_order(_request())
         assert r1.order_id == r2.order_id
 
+    def test_gtc_retry_returns_same_order_id(self) -> None:
+        svc = _service()
+        r1 = svc.submit_order(_request(valid_until=None))
+        r2 = svc.submit_order(_request(valid_until=None))
+        assert r1.order_id == r2.order_id
+        assert len(svc.command_log()) == 1
+
+    def test_gtc_then_expiring_same_client_id_conflicts(self) -> None:
+        svc = _service()
+        svc.submit_order(_request(valid_until=None))
+        with pytest.raises(IdempotencyConflictError):
+            svc.submit_order(_request(valid_until=_FUTURE))
+
     def test_retry_does_not_append_command(self) -> None:
         svc = _service()
         svc.submit_order(_request())

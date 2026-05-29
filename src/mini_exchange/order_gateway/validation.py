@@ -37,12 +37,16 @@ def build_submit_fingerprint(
     request: GatewaySubmitOrder,
 ) -> tuple[object, ...]:
     """Build a deterministic fingerprint tuple for idempotency checks."""
+    # GTC orders (valid_until is None) use a stable marker so retries match.
+    valid_until = (
+        request.valid_until.isoformat() if request.valid_until is not None else "GTC"
+    )
     return (
         request.broker_id,
         request.client_order_id,
         request.document_number,
         request.side.value,
-        request.valid_until.isoformat(),
+        valid_until,
         request.symbol,
         request.price,
         request.quantity,

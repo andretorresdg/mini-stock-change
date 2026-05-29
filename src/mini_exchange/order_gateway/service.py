@@ -240,6 +240,9 @@ class OrderGatewayService:
         for metadata in self._metadata_by_order_id.values():
             if metadata.status_override is not None:
                 continue
+            # GTC orders (valid_until is None) never expire on their own.
+            if metadata.valid_until is None:
+                continue
             if metadata.valid_until <= now:
                 core_order = self._engine.book(metadata.symbol).get_order(
                     metadata.order_id

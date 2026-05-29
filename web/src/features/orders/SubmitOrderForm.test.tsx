@@ -383,27 +383,60 @@ describe("SubmitOrderForm – generated client order ID", () => {
   });
 });
 
-// ── Validity window ──────────────────────────────────────────────────────────
+// ── Validity / expiration ────────────────────────────────────────────────────
 
-describe("SubmitOrderForm – validity window", () => {
-  it("defaults to 1 hour (60 minutes)", () => {
+function selectValidityMode(value: "GTC" | "EXPIRES") {
+  fireEvent.change(screen.getByLabelText(/order validity/i), { target: { value } });
+}
+
+describe("SubmitOrderForm – validity mode", () => {
+  it("offers a No expiration (GTC) option", () => {
     renderForm();
     const select = screen.getByLabelText(/order validity/i);
-    expect(select).toHaveValue("60");
+    const labels = Array.from((select as HTMLSelectElement).options).map((o) => o.text);
+    expect(labels).toContain("No expiration (GTC)");
   });
 
-  it("offers 15 minutes, 1 hour, 4 hours, and 1 day options", () => {
+  it("defaults to GTC (no expiration)", () => {
     renderForm();
-    const select = screen.getByLabelText(/order validity/i);
-    const options = Array.from((select as HTMLSelectElement).options).map((o) => o.value);
-    expect(options).toEqual(["15", "60", "240", "1440"]);
+    expect(screen.getByLabelText(/order validity/i)).toHaveValue("GTC");
   });
 
-  it("can change the validity window", () => {
+  it("does not show a datetime input in GTC mode", () => {
     renderForm();
-    const select = screen.getByLabelText(/order validity/i);
-    fireEvent.change(select, { target: { value: "1440" } });
-    expect(select).toHaveValue("1440");
+    expect(
+      screen.queryByLabelText(/expiration date and time/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a datetime input when specific expiration is selected", () => {
+    renderForm();
+    selectValidityMode("EXPIRES");
+    expect(
+      screen.getByLabelText(/expiration date and time \(utc\)/i),
+    ).toBeInTheDocument();
+  });
+
+  it("explains that times are interpreted as UTC", () => {
+    renderForm();
+    selectValidityMode("EXPIRES");
+    expect(screen.getByText(/times are interpreted as utc/i)).toBeInTheDocument();
+  });
+
+  it("disables submit when specific expiration is missing", () => {
+    renderForm();
+    fillValidForm();
+    selectValidityMode("EXPIRES");
+    expect(screen.getByRole("button", { name: /submit order/i })).toBeDisabled();
+  });
+
+  it("shows a validation error for a past expiration", () => {
+    renderForm();
+    fillValidForm();
+    selectValidityMode("EXPIRES");
+    const input = screen.getByLabelText(/expiration date and time \(utc\)/i);
+    fireEvent.change(input, { target: { value: "2000-01-01T00:00" } });
+    expect(screen.getByText(/must be in the future/i)).toBeInTheDocument();
   });
 });
 
@@ -430,8 +463,8 @@ describe("SubmitOrderForm – API payload", () => {
     expect(req.price).toBe(15000); // 150.00 → 15000 cents
     expect(req.quantity).toBe(5);
     expect(req.document_number).toBe("DOC-001");
-    expect(typeof req.valid_until).toBe("string");
-    expect(req.valid_until).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // Default validity is GTC, so valid_until is null.
+    expect(req.valid_until).toBeNull();
   });
 
   it("sends correct BID payload", async () => {
@@ -505,6 +538,113 @@ describe("SubmitOrderForm – API payload", () => {
     } finally {
       crypto.randomUUID = original;
     }
+  });
+
+  it("sends valid_until null for a GTC order (default)", async () => {
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+    });
+
+    const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+    expect(req.valid_until).toBeNull();
+  });
+
+  it("sends a UTC ISO string ending in Z for a specific expiration", async () => {
+    renderForm();
+    fillValidForm();
+    fireEvent.change(screen.getByLabelText(/order validity/i), {
+      target: { value: "EXPIRES" },
+    });
+    fireEvent.change(screen.getByLabelText(/expiration date and time \(utc\)/i), {
+      target: { value: "2099-05-28T15:30" },
+    });
+    await submitForm();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+    });
+
+    const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+    expect(req.valid_until).toBe("2099-05-28T15:30:00Z");
+  });
+});
+
+// ── Price input clarity ──────────────────────────────────────────────────────
+
+describe("SubmitOrderForm – price input", () => {
+  it("labels the price field as Unit price (USD)", () => {
+    renderForm();
+    expect(screen.getByLabelText(/unit price \(usd\)/i)).toBeInTheDocument();
+  });
+
+  it("shows the dot decimal helper text", () => {
+    renderForm();
+    expect(
+      screen.getByText(/use a dot as decimal separator, for example 10\.50/i),
+    ).toBeInTheDocument();
+  });
+
+  it("has a 10.00 placeholder", () => {
+    renderForm();
+    expect(screen.getByLabelText(/unit price \(usd\)/i)).toHaveAttribute(
+      "placeholder",
+      "10.00",
+    );
+  });
+
+  it("normalizes 10 to 10.00 on blur", () => {
+    renderForm();
+    const input = screen.getByLabelText(/unit price \(usd\)/i);
+    fireEvent.change(input, { target: { value: "10" } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue("10.00");
+  });
+
+  it("normalizes 10.5 to 10.50 on blur", () => {
+    renderForm();
+    const input = screen.getByLabelText(/unit price \(usd\)/i);
+    fireEvent.change(input, { target: { value: "10.5" } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue("10.50");
+  });
+
+  it("keeps 10.50 as 10.50 on blur", () => {
+    renderForm();
+    const input = screen.getByLabelText(/unit price \(usd\)/i);
+    fireEvent.change(input, { target: { value: "10.50" } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue("10.50");
+  });
+
+  it("rejects comma decimal input with a clear message", () => {
+    renderForm();
+    const input = screen.getByLabelText(/unit price \(usd\)/i);
+    fireEvent.change(input, { target: { value: "10,50" } });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /use a dot as decimal separator, for example 10\.50/i,
+    );
+    expect(screen.getByRole("button", { name: /submit order/i })).toBeDisabled();
+  });
+
+  it("submits 10.50 as 1050 integer cents", async () => {
+    vi.mocked(apiClient.submitOrder).mockResolvedValue(SAMPLE_ORDER);
+    renderForm();
+    fillValidForm();
+    const input = screen.getByLabelText(/unit price \(usd\)/i);
+    fireEvent.change(input, { target: { value: "10.50" } });
+    fireEvent.blur(input);
+    await submitForm();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+    });
+
+    const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+    expect(req.price).toBe(1050);
   });
 });
 
@@ -591,6 +731,21 @@ describe("SubmitOrderForm – success state", () => {
       expect(screen.getByTestId("success-remaining")).toHaveTextContent("5");
       expect(screen.getByTestId("success-filled")).toHaveTextContent("0");
     });
+  });
+
+  it("displays No expiration for a GTC order instead of raw null", async () => {
+    vi.mocked(apiClient.submitOrder).mockResolvedValue({
+      ...SAMPLE_ORDER,
+      valid_until: null,
+    });
+    renderForm();
+    fillValidForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("success-validity")).toHaveTextContent(/no expiration/i);
+    });
+    expect(screen.getByTestId("success-validity")).not.toHaveTextContent("null");
   });
 
   it("does not render trades table when there are no trades", async () => {

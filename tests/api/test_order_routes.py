@@ -207,6 +207,52 @@ class TestClientOrderIdHTTP:
         assert resp.json()["client_order_id"] == "ref-9"
 
 
+class TestGtcOrdersHTTP:
+    def test_post_with_null_valid_until_succeeds(self) -> None:
+        client = _make_client()
+        resp = client.post(
+            "/api/v1/brokers/broker1/orders",
+            json=_valid_body(side="BID", valid_until=None),
+        )
+        assert resp.status_code == 201
+        assert resp.json()["valid_until"] is None
+
+    def test_post_without_valid_until_succeeds(self) -> None:
+        client = _make_client()
+        body = _valid_body(side="BID")
+        del body["valid_until"]
+        resp = client.post("/api/v1/brokers/broker1/orders", json=body)
+        assert resp.status_code == 201
+        assert resp.json()["valid_until"] is None
+
+    def test_get_status_returns_null_valid_until_for_gtc(self) -> None:
+        client = _make_client()
+        client.post(
+            "/api/v1/brokers/broker1/orders",
+            json=_valid_body(side="BID", valid_until=None),
+        )
+        resp = client.get("/api/v1/brokers/broker1/orders/AAPL-O-1")
+        assert resp.status_code == 200
+        assert resp.json()["valid_until"] is None
+
+    def test_gtc_order_matches_later_compatible_order(self) -> None:
+        clock = _MutableClock(_NOW)
+        client = _make_client(clock)
+        client.post(
+            "/api/v1/brokers/seller/orders",
+            json=_valid_body(side="ASK", price=100, valid_until=None),
+        )
+        clock.now = _NOW + timedelta(days=365)
+        resp = client.post(
+            "/api/v1/brokers/buyer/orders",
+            json=_valid_body(side="BID", price=100, valid_until=None),
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["status"] == "FILLED"
+        assert data["trades"][0]["price"] == 100
+
+
 class TestExpiredAtSubmissionHTTP:
     def test_expired_returns_400(self) -> None:
         client = _make_client()

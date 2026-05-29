@@ -39,8 +39,9 @@ export function quantityToApiInteger(value: string): number {
 // ── Price ─────────────────────────────────────────────────────────────────────
 
 export function sanitizePriceInput(value: string): string {
-  // Keep digits and at most one decimal point.
-  let result = value.replace(/[^\d.]/g, "");
+  // Keep digits, comma, and at most one decimal point. Commas are preserved
+  // so the user sees their input and gets a clear "use a dot" error.
+  let result = value.replace(/[^\d.,]/g, "");
   const dotIndex = result.indexOf(".");
   if (dotIndex !== -1) {
     result =
@@ -50,6 +51,8 @@ export function sanitizePriceInput(value: string): string {
   return result;
 }
 
+export const PRICE_DOT_HINT = "Use a dot as decimal separator, for example 10.50";
+
 export function normalizePriceDisplay(value: string): string {
   if (value === "" || value === ".") return "";
   const n = parseFloat(value);
@@ -58,6 +61,9 @@ export function normalizePriceDisplay(value: string): string {
 }
 
 export function validatePrice(value: string): string | null {
+  if (value.includes(",")) {
+    return PRICE_DOT_HINT;
+  }
   if (!/^\d+(\.\d{1,2})?$/.test(value)) {
     return "Price must be a positive number with at most two decimal places.";
   }
@@ -69,7 +75,8 @@ export function validatePrice(value: string): string | null {
 }
 
 export function priceToCents(value: string): number {
-  // Split on the decimal point and pad or trim to exactly two decimals.
+  // UI shows USD decimals; the API receives integer cents. We parse the string
+  // (never float arithmetic) and dot decimals avoid locale ambiguity here.
   const [intPart, fracPart = ""] = value.split(".");
   const cents = fracPart.slice(0, 2).padEnd(2, "0");
   return parseInt(intPart + cents, 10);
@@ -120,13 +127,28 @@ export function validateOrderId(value: string): string | null {
   return null;
 }
 
-// ── Validity window ───────────────────────────────────────────────────────────
+// ── Validity / expiration ─────────────────────────────────────────────────────
 
-export function buildDefaultValidUntil(
-  minutes = 60,
+export function utcDateTimeLocalToIso(value: string): string {
+  // The datetime-local value is treated as UTC by design for this MVP.
+  // We append Z manually instead of converting from the browser's local zone.
+  const withSeconds = value.length === 16 ? `${value}:00` : value;
+  return `${withSeconds}Z`;
+}
+
+export function validateExpiration(
+  value: string,
   clock: () => Date = () => new Date(),
-): string {
-  const now = clock();
-  const future = new Date(now.getTime() + minutes * 60 * 1000);
-  return future.toISOString();
+): string | null {
+  if (value.trim() === "") {
+    return "Expiration date and time is required.";
+  }
+  const when = new Date(utcDateTimeLocalToIso(value));
+  if (Number.isNaN(when.getTime())) {
+    return "Enter a valid expiration date and time.";
+  }
+  if (when.getTime() <= clock().getTime()) {
+    return "Expiration must be in the future.";
+  }
+  return null;
 }
