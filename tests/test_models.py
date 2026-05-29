@@ -12,6 +12,7 @@ def make_order(**kwargs: object) -> Order:
     defaults: dict[str, object] = {
         "order_id": "O1",
         "broker_id": "B1",
+        "document_number": "11111111100",
         "symbol": "AAPL",
         "side": Side.BUY,
         "price": 100,
@@ -40,6 +41,7 @@ class TestOrderCreation:
         [
             ("order_id", "", "order_id must be non-empty"),
             ("broker_id", "", "broker_id must be non-empty"),
+            ("document_number", "", "document_number must be non-empty"),
             ("symbol", "", "symbol must be non-empty"),
             ("price", 0, "price must be a positive integer"),
             ("price", -1, "price must be a positive integer"),

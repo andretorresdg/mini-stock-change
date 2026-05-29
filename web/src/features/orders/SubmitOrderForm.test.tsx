@@ -15,7 +15,7 @@ const SAMPLE_ORDER: OrderResponse = {
   order_id: "AAPL-O-1",
   broker_id: "broker1",
   client_order_id: null,
-  document_number: "DOC-001",
+  document_number: "11111111100",
   side: "ASK",
   symbol: "AAPL",
   price: 15000,
@@ -59,7 +59,7 @@ function fillValidForm(overrides: { side?: "BID" | "ASK"; symbol?: string } = {}
   fireEvent.blur(screen.getByLabelText(/broker \/ username/i));
 
   fireEvent.change(screen.getByLabelText(/customer document number/i), {
-    target: { value: "DOC-001" },
+    target: { value: "11111111100" },
   });
   fireEvent.blur(screen.getByLabelText(/customer document number/i));
 
@@ -107,7 +107,7 @@ describe("SubmitOrderForm – field rendering", () => {
   it("renders the document number helper text", () => {
     renderForm();
     expect(
-      screen.getByText(/required to identify the customer represented by the broker/i),
+      screen.getByText(/identifies the customer represented by the broker/i),
     ).toBeInTheDocument();
   });
 
@@ -146,6 +146,11 @@ describe("SubmitOrderForm – field rendering", () => {
   it("renders Submit Order button", () => {
     renderForm();
     expect(screen.getByRole("button", { name: /submit order/i })).toBeInTheDocument();
+  });
+
+  it("uses a two-column page layout", () => {
+    const { container } = render(<SubmitOrderForm />);
+    expect(container.querySelector(".two-column-page")).toBeInTheDocument();
   });
 });
 
@@ -462,7 +467,7 @@ describe("SubmitOrderForm – API payload", () => {
     expect(req.symbol).toBe("AAPL");
     expect(req.price).toBe(15000); // 150.00 → 15000 cents
     expect(req.quantity).toBe(5);
-    expect(req.document_number).toBe("DOC-001");
+    expect(req.document_number).toBe("11111111100");
     // Default validity is GTC, so valid_until is null.
     expect(req.valid_until).toBeNull();
   });
@@ -478,6 +483,36 @@ describe("SubmitOrderForm – API payload", () => {
 
     const [, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
     expect(req.side).toBe("BID");
+  });
+
+  it("does not copy broker id into customer document number on submit", async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText(/broker \/ username/i), {
+      target: { value: "BROKER-ALPHA" },
+    });
+    fireEvent.change(screen.getByLabelText(/customer document number/i), {
+      target: { value: "22222222200" },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "ASK" }));
+    fireEvent.change(screen.getByLabelText(/stock symbol/i), {
+      target: { value: "AAPL" },
+    });
+    fireEvent.change(screen.getByLabelText(/unit price/i), {
+      target: { value: "150.00" },
+    });
+    fireEvent.change(screen.getByLabelText(/quantity/i), {
+      target: { value: "5" },
+    });
+    await submitForm();
+
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();
+    });
+
+    const [brokerId, req] = vi.mocked(apiClient.submitOrder).mock.calls[0]!;
+    expect(brokerId).toBe("BROKER-ALPHA");
+    expect(req.document_number).toBe("22222222200");
+    expect(req.document_number).not.toBe(brokerId);
   });
 
   it("sends broker_id as path parameter (first argument)", async () => {
@@ -685,7 +720,7 @@ describe("SubmitOrderForm – loading state", () => {
     });
 
     // Submit via the form element directly — guard in handleSubmit stops it.
-    const form = screen.getByRole("button", { name: /submitting/i }).closest("form")!;
+    const form = document.getElementById("submit-order-form")!;
     fireEvent.submit(form);
 
     expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();

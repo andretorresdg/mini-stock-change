@@ -122,6 +122,7 @@ class OrderGatewayService:
                 price=cmd.price,
                 quantity=cmd.quantity,
                 order_id=cmd.order_id,
+                document_number=cmd.document_number,
             )
 
             metadata = OrderMetadata(

@@ -11,6 +11,7 @@ from mini_exchange.orderbook import (
     SideBook,
     Trade,
 )
+from tests.customer_documents import CUST_111, CUST_222
 
 
 def test_all_public_exports_importable() -> None:
@@ -32,9 +33,19 @@ def test_all_public_exports_importable() -> None:
 def test_readme_example() -> None:
     """Verify the README example works exactly as documented."""
     book = OrderBook("AAPL")
-    book.submit_limit_order(broker_id="seller1", side=Side.SELL, price=1000, quantity=1)
+    book.submit_limit_order(
+        broker_id="seller1",
+        side=Side.SELL,
+        price=1000,
+        quantity=1,
+        document_number=CUST_111,
+    )
     report = book.submit_limit_order(
-        broker_id="buyer1", side=Side.BUY, price=2000, quantity=1
+        broker_id="buyer1",
+        side=Side.BUY,
+        price=2000,
+        quantity=1,
+        document_number=CUST_222,
     )
     assert len(report.trades) == 1
     assert report.trades[0].price == 1000

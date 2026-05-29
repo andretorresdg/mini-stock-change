@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from mini_exchange.api.app import create_app
 from mini_exchange.order_gateway.errors import OrderGatewayError
 from mini_exchange.order_gateway.service import OrderGatewayService
+from tests.customer_documents import CUST_111, CUST_222
 
 
 def _fixed_clock() -> datetime:
@@ -21,9 +22,11 @@ def _make_app() -> TestClient:
     return TestClient(app)
 
 
-def _valid_body(**overrides: object) -> dict[str, object]:
+def _valid_body(
+    *, document_number: str = CUST_111, **overrides: object
+) -> dict[str, object]:
     body: dict[str, object] = {
-        "document_number": "DOC-001",
+        "document_number": document_number,
         "side": "ASK",
         "valid_until": "2030-01-01T00:00:00Z",
         "symbol": "AAPL",
@@ -73,7 +76,7 @@ class TestResponseFields:
     def test_includes_document_number(self) -> None:
         client = _make_app()
         resp = client.post("/api/v1/brokers/broker1/orders", json=_valid_body())
-        assert resp.json()["document_number"] == "DOC-001"
+        assert resp.json()["document_number"] == CUST_111
 
     def test_includes_valid_until(self) -> None:
         client = _make_app()
@@ -91,17 +94,35 @@ class TestPriceGapMatch:
         client = _make_app()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_valid_body(side="ASK", price=1000),
+            json=_valid_body(side="ASK", price=1000, document_number=CUST_111),
         )
         resp = client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_valid_body(side="BID", price=2000),
+            json=_valid_body(side="BID", price=2000, document_number=CUST_222),
         )
         assert resp.status_code == 201
         data = resp.json()
         assert data["status"] == "FILLED"
         assert len(data["trades"]) == 1
         assert data["trades"][0]["price"] == 1000
+
+    def test_missing_document_number_returns_422(self) -> None:
+        client = _make_app()
+        body = _valid_body()
+        del body["document_number"]
+        resp = client.post("/api/v1/brokers/broker1/orders", json=body)
+        assert resp.status_code == 422
+
+    def test_response_document_number_is_not_broker_id(self) -> None:
+        client = _make_app()
+        resp = client.post(
+            "/api/v1/brokers/BROKER-ALPHA/orders",
+            json=_valid_body(document_number=CUST_222),
+        )
+        data = resp.json()
+        assert data["broker_id"] == "BROKER-ALPHA"
+        assert data["document_number"] == CUST_222
+        assert data["document_number"] != data["broker_id"]
 
 
 class TestInvalidRequestBody:
@@ -195,11 +216,11 @@ class TestGetOrderFilled:
         client = _make_app()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_valid_body(side="ASK", price=100),
+            json=_valid_body(side="ASK", price=100, document_number=CUST_111),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_valid_body(side="BID", price=100),
+            json=_valid_body(side="BID", price=100, document_number=CUST_222),
         )
         resp = client.get("/api/v1/brokers/seller/orders/AAPL-O-1")
         assert resp.status_code == 200
@@ -213,11 +234,15 @@ class TestGetOrderPartiallyFilled:
         client = _make_app()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_valid_body(side="ASK", price=100, quantity=20),
+            json=_valid_body(
+                side="ASK", price=100, quantity=20, document_number=CUST_111
+            ),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_valid_body(side="BID", price=100, quantity=5),
+            json=_valid_body(
+                side="BID", price=100, quantity=5, document_number=CUST_222
+            ),
         )
         resp = client.get("/api/v1/brokers/seller/orders/AAPL-O-1")
         assert resp.status_code == 200
@@ -232,11 +257,11 @@ class TestGetOrderIncludesTrades:
         client = _make_app()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_valid_body(side="ASK", price=100),
+            json=_valid_body(side="ASK", price=100, document_number=CUST_111),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_valid_body(side="BID", price=100),
+            json=_valid_body(side="BID", price=100, document_number=CUST_222),
         )
         resp = client.get("/api/v1/brokers/buyer/orders/AAPL-O-2")
         assert resp.status_code == 200

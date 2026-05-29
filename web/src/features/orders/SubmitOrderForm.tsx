@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ApiClientError, submitOrder } from "../../api/client";
 import type { OrderResponse, OrderSide } from "../../api/types";
+import Panel from "../../components/Panel";
+import TwoColumnPage from "../../components/TwoColumnPage";
 import {
   normalizePriceDisplay,
   PRICE_DOT_HINT,
@@ -19,6 +21,8 @@ import {
 } from "./validation";
 
 type ValidityMode = "GTC" | "EXPIRES";
+
+const FORM_ID = "submit-order-form";
 
 // The UI generates this idempotency key so users do not need to manage retry
 // IDs manually. Broker API clients may still send their own client_order_id.
@@ -114,6 +118,118 @@ const errorStyle: React.CSSProperties = {
   display: "block",
 };
 
+const buttonStyle = (enabled: boolean): React.CSSProperties => ({
+  padding: "0.6rem 1.5rem",
+  background: enabled ? "#3182ce" : "#2d3748",
+  color: "#e2e8f0",
+  border: "none",
+  borderRadius: "4px",
+  fontSize: "1rem",
+  cursor: enabled ? "pointer" : "not-allowed",
+});
+
+interface SuccessPanelProps {
+  order: OrderResponse;
+  onReset: () => void;
+}
+
+function SuccessPanel({ order, onReset }: SuccessPanelProps) {
+  return (
+    <section aria-labelledby="successHeading" role="region">
+      <h2 id="successHeading" style={{ color: "#68d391", marginBottom: "1rem" }}>
+        Order submitted
+      </h2>
+      <p style={{ color: "#fbd38d", marginBottom: "1.5rem" }}>
+        Save this order ID. You will need it to check the order status later.
+      </p>
+      <dl
+        style={{
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          gap: "0.4rem 1rem",
+          marginBottom: "1.5rem",
+        }}
+      >
+        <dt style={{ color: "#a0aec0" }}>Order ID</dt>
+        <dd data-testid="success-order-id">{order.order_id}</dd>
+        <dt style={{ color: "#a0aec0" }}>Status</dt>
+        <dd data-testid="success-status">{order.status}</dd>
+        <dt style={{ color: "#a0aec0" }}>Validity</dt>
+        <dd data-testid="success-validity">{formatValidUntil(order.valid_until)}</dd>
+        <dt style={{ color: "#a0aec0" }}>Remaining</dt>
+        <dd data-testid="success-remaining">{order.remaining_quantity}</dd>
+        <dt style={{ color: "#a0aec0" }}>Filled</dt>
+        <dd data-testid="success-filled">{order.filled_quantity}</dd>
+        <dt style={{ color: "#a0aec0" }}>Trades</dt>
+        <dd data-testid="success-trade-count">{order.trades.length}</dd>
+      </dl>
+
+      {order.trades.length > 0 && (
+        <table
+          aria-label="Trades"
+          style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1.5rem" }}
+        >
+          <thead>
+            <tr>
+              {["Trade ID", "Price", "Quantity", "Buyer", "Seller"].map((h) => (
+                <th
+                  key={h}
+                  style={{
+                    textAlign: "left",
+                    padding: "0.4rem 0.6rem",
+                    color: "#a0aec0",
+                    borderBottom: "1px solid #2d3748",
+                    fontSize: "0.8rem",
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {order.trades.map((t) => (
+              <tr key={t.trade_id}>
+                <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
+                  {t.trade_id}
+                </td>
+                <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
+                  {(t.price / 100).toFixed(2)}
+                </td>
+                <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
+                  {t.quantity}
+                </td>
+                <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
+                  {t.buyer_broker_id}
+                </td>
+                <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
+                  {t.seller_broker_id}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <button
+        type="button"
+        onClick={onReset}
+        style={{
+          padding: "0.6rem 1.5rem",
+          background: "#2d3748",
+          color: "#e2e8f0",
+          border: "1px solid #4a5568",
+          borderRadius: "4px",
+          cursor: "pointer",
+          fontSize: "1rem",
+        }}
+      >
+        Submit another order
+      </button>
+    </section>
+  );
+}
+
 export default function SubmitOrderForm() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [touched, setTouched] = useState<Partial<Record<keyof FormErrors, boolean>>>({});
@@ -122,6 +238,7 @@ export default function SubmitOrderForm() {
   const errors = validate(form);
   const formValid = isValid(errors);
   const isPending = status.kind === "pending";
+  const isSuccess = status.kind === "success";
 
   function touch(field: keyof FormErrors) {
     setTouched((t) => ({ ...t, [field]: true }));
@@ -159,107 +276,6 @@ export default function SubmitOrderForm() {
     setStatus({ kind: "idle" });
   }
 
-  // ── Success panel ───────────────────────────────────────────────────────────
-  if (status.kind === "success") {
-    const { order } = status;
-    return (
-      <section aria-labelledby="successHeading" role="region">
-        <h2 id="successHeading" style={{ color: "#68d391", marginBottom: "1rem" }}>
-          Order submitted
-        </h2>
-        <p style={{ color: "#fbd38d", marginBottom: "1.5rem" }}>
-          Save this order ID. You will need it to check the order status later.
-        </p>
-        <dl
-          style={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr",
-            gap: "0.4rem 1rem",
-            marginBottom: "1.5rem",
-          }}
-        >
-          <dt style={{ color: "#a0aec0" }}>Order ID</dt>
-          <dd data-testid="success-order-id">{order.order_id}</dd>
-          <dt style={{ color: "#a0aec0" }}>Status</dt>
-          <dd data-testid="success-status">{order.status}</dd>
-          <dt style={{ color: "#a0aec0" }}>Validity</dt>
-          <dd data-testid="success-validity">{formatValidUntil(order.valid_until)}</dd>
-          <dt style={{ color: "#a0aec0" }}>Remaining</dt>
-          <dd data-testid="success-remaining">{order.remaining_quantity}</dd>
-          <dt style={{ color: "#a0aec0" }}>Filled</dt>
-          <dd data-testid="success-filled">{order.filled_quantity}</dd>
-          <dt style={{ color: "#a0aec0" }}>Trades</dt>
-          <dd data-testid="success-trade-count">{order.trades.length}</dd>
-        </dl>
-
-        {order.trades.length > 0 && (
-          <table
-            aria-label="Trades"
-            style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1.5rem" }}
-          >
-            <thead>
-              <tr>
-                {["Trade ID", "Price", "Quantity", "Buyer", "Seller"].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: "left",
-                      padding: "0.4rem 0.6rem",
-                      color: "#a0aec0",
-                      borderBottom: "1px solid #2d3748",
-                      fontSize: "0.8rem",
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {order.trades.map((t) => (
-                <tr key={t.trade_id}>
-                  <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
-                    {t.trade_id}
-                  </td>
-                  <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
-                    {(t.price / 100).toFixed(2)}
-                  </td>
-                  <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
-                    {t.quantity}
-                  </td>
-                  <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
-                    {t.buyer_broker_id}
-                  </td>
-                  <td style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}>
-                    {t.seller_broker_id}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        <button
-          onClick={handleReset}
-          style={{
-            padding: "0.6rem 1.5rem",
-            background: "#2d3748",
-            color: "#e2e8f0",
-            border: "1px solid #4a5568",
-            borderRadius: "4px",
-            cursor: "pointer",
-            fontSize: "1rem",
-          }}
-        >
-          Submit another order
-        </button>
-      </section>
-    );
-  }
-
-  // ── Form ────────────────────────────────────────────────────────────────────
-
-  // Preview values
   const previewSide = form.side;
   const previewSymbol = form.symbol || "—";
   const previewPrice = form.price ? normalizePriceDisplay(form.price) || "—" : "—";
@@ -272,9 +288,8 @@ export default function SubmitOrderForm() {
     notional = `$${((cents * qty) / 100).toFixed(2)}`;
   }
 
-  return (
-    <form onSubmit={handleSubmit} noValidate>
-      {/* Broker / username */}
+  const leftColumn = (
+    <form id={FORM_ID} onSubmit={handleSubmit} noValidate>
       <div style={fieldStyle}>
         <label htmlFor="brokerId" style={labelStyle}>
           Broker / username
@@ -296,7 +311,6 @@ export default function SubmitOrderForm() {
         )}
       </div>
 
-      {/* Customer document number */}
       <div style={fieldStyle}>
         <label htmlFor="documentNumber" style={labelStyle}>
           Customer document number
@@ -305,7 +319,7 @@ export default function SubmitOrderForm() {
           id="documentNumberHelp"
           style={{ color: "#718096", fontSize: "0.8rem", display: "block" }}
         >
-          Required to identify the customer represented by the broker.
+          Identifies the customer represented by the broker.
         </span>
         <input
           id="documentNumber"
@@ -328,7 +342,6 @@ export default function SubmitOrderForm() {
         )}
       </div>
 
-      {/* Order side */}
       <div style={fieldStyle} role="group" aria-labelledby="sideLabel">
         <span
           id="sideLabel"
@@ -355,7 +368,6 @@ export default function SubmitOrderForm() {
         </div>
       </div>
 
-      {/* Stock symbol */}
       <div style={fieldStyle}>
         <label htmlFor="symbol" style={labelStyle}>
           Stock symbol
@@ -381,7 +393,6 @@ export default function SubmitOrderForm() {
         )}
       </div>
 
-      {/* Unit price (USD) */}
       <div style={fieldStyle}>
         <label htmlFor="price" style={labelStyle}>
           Unit price (USD)
@@ -421,7 +432,6 @@ export default function SubmitOrderForm() {
         )}
       </div>
 
-      {/* Quantity */}
       <div style={fieldStyle}>
         <label htmlFor="quantity" style={labelStyle}>
           Quantity
@@ -448,7 +458,6 @@ export default function SubmitOrderForm() {
         )}
       </div>
 
-      {/* Order validity */}
       <div style={fieldStyle}>
         <label htmlFor="validityMode" style={labelStyle}>
           Order validity
@@ -466,7 +475,6 @@ export default function SubmitOrderForm() {
         </select>
       </div>
 
-      {/* Specific expiration (only when EXPIRES mode is selected) */}
       {form.validityMode === "EXPIRES" && (
         <div style={fieldStyle}>
           <label htmlFor="expiresAt" style={labelStyle}>
@@ -501,24 +509,14 @@ export default function SubmitOrderForm() {
           )}
         </div>
       )}
+    </form>
+  );
 
-      {/* Order preview */}
-      <section
-        aria-labelledby="previewHeading"
-        style={{
-          background: "#1a202c",
-          border: "1px solid #2d3748",
-          borderRadius: "6px",
-          padding: "1rem",
-          marginBottom: "1.5rem",
-        }}
-      >
-        <h2
-          id="previewHeading"
-          style={{ fontSize: "0.9rem", color: "#a0aec0", marginBottom: "0.75rem" }}
-        >
-          Order preview
-        </h2>
+  const rightColumn = isSuccess ? (
+    <SuccessPanel order={status.order} onReset={handleReset} />
+  ) : (
+    <>
+      <Panel title="Order preview" titleId="previewHeading">
         <dl
           style={{
             display: "grid",
@@ -538,9 +536,8 @@ export default function SubmitOrderForm() {
           <dt style={{ color: "#718096" }}>Estimated notional (USD)</dt>
           <dd data-testid="preview-notional">{notional}</dd>
         </dl>
-      </section>
+      </Panel>
 
-      {/* Error feedback */}
       {status.kind === "error" && (
         <div
           role="alert"
@@ -549,7 +546,7 @@ export default function SubmitOrderForm() {
             border: "1px solid #fc8181",
             borderRadius: "4px",
             padding: "0.75rem 1rem",
-            marginBottom: "1rem",
+            marginTop: "1rem",
             color: "#fed7d7",
           }}
         >
@@ -557,22 +554,16 @@ export default function SubmitOrderForm() {
         </div>
       )}
 
-      {/* Submit */}
       <button
         type="submit"
+        form={FORM_ID}
         disabled={!formValid || isPending}
-        style={{
-          padding: "0.6rem 1.5rem",
-          background: formValid && !isPending ? "#3182ce" : "#2d3748",
-          color: "#e2e8f0",
-          border: "none",
-          borderRadius: "4px",
-          fontSize: "1rem",
-          cursor: formValid && !isPending ? "pointer" : "not-allowed",
-        }}
+        style={{ ...buttonStyle(formValid && !isPending), marginTop: "1rem" }}
       >
         {isPending ? "Submitting…" : "Submit Order"}
       </button>
-    </form>
+    </>
   );
+
+  return <TwoColumnPage left={leftColumn} right={rightColumn} />;
 }

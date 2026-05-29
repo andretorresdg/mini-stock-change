@@ -36,5 +36,10 @@ npm run typecheck
 echo "==> Frontend: production build"
 npm run build
 
+cd "$ROOT"
+
+echo "==> Containers: docker compose build"
+docker compose build
+
 echo
 echo "All checks passed."

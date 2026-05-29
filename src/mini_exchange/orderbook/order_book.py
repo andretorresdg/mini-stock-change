@@ -86,6 +86,8 @@ class OrderBook:
         price: int,
         quantity: int,
         order_id: str | None = None,
+        *,
+        document_number: str,
     ) -> ExecutionReport:
         """Submit a limit order, match it, and return an execution report."""
         self._order_seq += 1
@@ -97,6 +99,7 @@ class OrderBook:
         order = Order(
             order_id=order_id,
             broker_id=broker_id,
+            document_number=document_number,
             symbol=self._symbol,
             side=side,
             price=price,
@@ -169,16 +172,20 @@ class OrderBook:
                     f"!= seller price {seller.price}"
                 )
                 raise InvariantViolationError(msg)
+            if buyer.document_number == seller.document_number:
+                msg = (
+                    f"trade {trade.trade_id} matches same document_number "
+                    f"{buyer.document_number}"
+                )
+                raise InvariantViolationError(msg)
 
     def _match(self, order: Order) -> list[Trade]:
         """Match an incoming order against the opposite side."""
         trades: list[Trade] = []
         opposite = self._asks if order.side == Side.BUY else self._bids
         while order.remaining > 0:
-            resting = opposite.peek_best_order()
+            resting = opposite.find_matchable_order(order)
             if resting is None:
-                break
-            if not self._prices_cross(order, resting):
                 break
             fill_qty = min(order.remaining, resting.remaining)
             if order.side == Side.BUY:
@@ -188,7 +195,7 @@ class OrderBook:
             fill_price = seller.price
             order.apply_fill(fill_qty)
             resting.apply_fill(fill_qty)
-            opposite.discard_inactive_head(resting.price)
+            opposite.purge_inactive(resting.price)
             self._trade_seq += 1
             trade = Trade(
                 trade_id=f"{self._symbol}-T{self._trade_seq}",
@@ -204,10 +211,3 @@ class OrderBook:
             self._trades.append(trade)
             trades.append(trade)
         return trades
-
-    @staticmethod
-    def _prices_cross(incoming: Order, resting: Order) -> bool:
-        """Check if the incoming order's price crosses the resting order."""
-        if incoming.side == Side.BUY:
-            return incoming.price >= resting.price
-        return resting.price >= incoming.price

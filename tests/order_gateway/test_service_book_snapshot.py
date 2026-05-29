@@ -11,6 +11,7 @@ from mini_exchange.order_gateway.models import (
 )
 from mini_exchange.order_gateway.service import OrderGatewayService
 from mini_exchange.orderbook.models import Side
+from tests.customer_documents import doc_for
 
 _NOW = datetime(2030, 6, 15, 12, 0, 0, tzinfo=UTC)
 _FUTURE = _NOW + timedelta(hours=1)
@@ -31,6 +32,7 @@ def _svc(clock: _MutableClock | None = None) -> OrderGatewayService:
 
 def _ask(
     broker: str = "seller",
+    document_number: str | None = None,
     price: int = 1_000,
     quantity: int = 100,
     symbol: str = "AAPL",
@@ -38,7 +40,9 @@ def _ask(
 ) -> GatewaySubmitOrder:
     return GatewaySubmitOrder(
         broker_id=broker,
-        document_number="DOC-001",
+        document_number=document_number
+        if document_number is not None
+        else doc_for(broker),
         client_order_id=None,
         side=Side.SELL,
         valid_until=valid_until,
@@ -50,6 +54,7 @@ def _ask(
 
 def _bid(
     broker: str = "buyer",
+    document_number: str | None = None,
     price: int = 1_000,
     quantity: int = 100,
     symbol: str = "AAPL",
@@ -57,7 +62,9 @@ def _bid(
 ) -> GatewaySubmitOrder:
     return GatewaySubmitOrder(
         broker_id=broker,
-        document_number="DOC-001",
+        document_number=document_number
+        if document_number is not None
+        else doc_for(broker),
         client_order_id=None,
         side=Side.BUY,
         valid_until=valid_until,
