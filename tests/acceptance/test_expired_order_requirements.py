@@ -45,9 +45,9 @@ def _make_client(clock: _MutableClock) -> TestClient:
     return TestClient(create_app(order_gateway=svc))
 
 
-def _body(**overrides: object) -> dict[str, object]:
+def _body(*, broker: str = "default", **overrides: object) -> dict[str, object]:
     body: dict[str, object] = {
-        "document_number": "DOC-001",
+        "document_number": f"DOC-{broker}",
         "side": "ASK",
         "valid_until": _iso(_EXPIRE_IN_2H),
         "symbol": "AAPL",
@@ -70,7 +70,7 @@ class TestExpiredAskNotExecuted:
 
         ask = client.post(
             "/api/v1/brokers/brokerA/orders",
-            json=_body(side="ASK", valid_until=_iso(_EXPIRE_IN_5M)),
+            json=_body(broker="brokerA", side="ASK", valid_until=_iso(_EXPIRE_IN_5M)),
         )
         assert ask.status_code == 201
         ask_id = ask.json()["order_id"]
@@ -80,7 +80,12 @@ class TestExpiredAskNotExecuted:
 
         bid = client.post(
             "/api/v1/brokers/brokerB/orders",
-            json=_body(side="BID", price=PRICE_10, valid_until=_iso(_EXPIRE_IN_2H)),
+            json=_body(
+                broker="brokerB",
+                side="BID",
+                price=PRICE_10,
+                valid_until=_iso(_EXPIRE_IN_2H),
+            ),
         )
         assert bid.status_code == 201
         bid_data = bid.json()
@@ -105,7 +110,12 @@ class TestExpiredBidNotExecuted:
 
         bid = client.post(
             "/api/v1/brokers/brokerA/orders",
-            json=_body(side="BID", price=PRICE_20, valid_until=_iso(_EXPIRE_IN_5M)),
+            json=_body(
+                broker="brokerA",
+                side="BID",
+                price=PRICE_20,
+                valid_until=_iso(_EXPIRE_IN_5M),
+            ),
         )
         assert bid.status_code == 201
         bid_id = bid.json()["order_id"]
@@ -115,7 +125,12 @@ class TestExpiredBidNotExecuted:
 
         ask = client.post(
             "/api/v1/brokers/brokerB/orders",
-            json=_body(side="ASK", price=PRICE_10, valid_until=_iso(_EXPIRE_IN_2H)),
+            json=_body(
+                broker="brokerB",
+                side="ASK",
+                price=PRICE_10,
+                valid_until=_iso(_EXPIRE_IN_2H),
+            ),
         )
         assert ask.status_code == 201
         ask_data = ask.json()
@@ -141,7 +156,12 @@ class TestPartiallyFilledOrderExpiration:
         # Broker A submits ASK 1000 @ PRICE_10.
         ask = client.post(
             "/api/v1/brokers/brokerA/orders",
-            json=_body(side="ASK", quantity=1_000, valid_until=_iso(_EXPIRE_IN_5M)),
+            json=_body(
+                broker="brokerA",
+                side="ASK",
+                quantity=1_000,
+                valid_until=_iso(_EXPIRE_IN_5M),
+            ),
         )
         assert ask.status_code == 201
         ask_id = ask.json()["order_id"]
@@ -149,7 +169,12 @@ class TestPartiallyFilledOrderExpiration:
         # Broker B takes 500 — partially fills the ASK.
         bid_b = client.post(
             "/api/v1/brokers/brokerB/orders",
-            json=_body(side="BID", quantity=500, valid_until=_iso(_EXPIRE_IN_2H)),
+            json=_body(
+                broker="brokerB",
+                side="BID",
+                quantity=500,
+                valid_until=_iso(_EXPIRE_IN_2H),
+            ),
         )
         assert bid_b.json()["status"] == "FILLED"
 
@@ -163,7 +188,12 @@ class TestPartiallyFilledOrderExpiration:
         # Broker C bids for the remaining 500; must not match the expired ASK.
         bid_c = client.post(
             "/api/v1/brokers/brokerC/orders",
-            json=_body(side="BID", quantity=500, valid_until=_iso(_EXPIRE_IN_2H)),
+            json=_body(
+                broker="brokerC",
+                side="BID",
+                quantity=500,
+                valid_until=_iso(_EXPIRE_IN_2H),
+            ),
         )
         assert bid_c.status_code == 201
         bid_c_data = bid_c.json()
@@ -184,13 +214,23 @@ class TestPartiallyFilledOrderExpiration:
 
         ask = client.post(
             "/api/v1/brokers/brokerA/orders",
-            json=_body(side="ASK", quantity=1_000, valid_until=_iso(_EXPIRE_IN_5M)),
+            json=_body(
+                broker="brokerA",
+                side="ASK",
+                quantity=1_000,
+                valid_until=_iso(_EXPIRE_IN_5M),
+            ),
         )
         ask_id = ask.json()["order_id"]
 
         client.post(
             "/api/v1/brokers/brokerB/orders",
-            json=_body(side="BID", quantity=300, valid_until=_iso(_EXPIRE_IN_2H)),
+            json=_body(
+                broker="brokerB",
+                side="BID",
+                quantity=300,
+                valid_until=_iso(_EXPIRE_IN_2H),
+            ),
         )
 
         clock.now = _NOW + timedelta(minutes=10)
@@ -214,14 +254,24 @@ class TestFilledOrderDoesNotExpire:
 
         ask = client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", quantity=1_000, valid_until=_iso(_EXPIRE_IN_5M)),
+            json=_body(
+                broker="seller",
+                side="ASK",
+                quantity=1_000,
+                valid_until=_iso(_EXPIRE_IN_5M),
+            ),
         )
         assert ask.status_code == 201
         ask_id = ask.json()["order_id"]
 
         bid = client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", quantity=1_000, valid_until=_iso(_EXPIRE_IN_2H)),
+            json=_body(
+                broker="buyer",
+                side="BID",
+                quantity=1_000,
+                valid_until=_iso(_EXPIRE_IN_2H),
+            ),
         )
         assert bid.json()["status"] == "FILLED"
 
@@ -249,7 +299,7 @@ class TestExpiredAtSubmission:
 
         resp = client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", valid_until=_iso(_NOW)),
+            json=_body(broker="seller", side="ASK", valid_until=_iso(_NOW)),
         )
         assert resp.status_code == 400
         assert resp.json()["code"] == "EXPIRED_ORDER"
@@ -260,7 +310,11 @@ class TestExpiredAtSubmission:
 
         resp = client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", valid_until=_iso(_NOW - timedelta(seconds=1))),
+            json=_body(
+                broker="seller",
+                side="ASK",
+                valid_until=_iso(_NOW - timedelta(seconds=1)),
+            ),
         )
         assert resp.status_code == 400
         assert resp.json()["code"] == "EXPIRED_ORDER"

@@ -84,6 +84,7 @@ class TestCrossedBookDetection:
         crossed_order = Order(
             order_id="FAKE",
             broker_id="X",
+            document_number="DOC-X",
             symbol="AAPL",
             side=Side.SELL,
             price=90,
@@ -223,4 +224,28 @@ class TestTradeInvariantViolations:
         )
         book._trades[0] = bad_trade
         with pytest.raises(InvariantViolationError, match="seller has wrong side"):
+            book.validate_invariants()
+
+    def test_trade_same_document_number_detected(self, book: OrderBook) -> None:
+        book.submit_limit_order(
+            "B1", Side.SELL, 100, 10, order_id="S1", document_number="DOC-SELLER"
+        )
+        book.submit_limit_order(
+            "B2", Side.BUY, 100, 10, order_id="Buy1", document_number="DOC-BUYER"
+        )
+        bad_trade = Trade(
+            trade_id="BAD",
+            sequence=1,
+            symbol="AAPL",
+            buyer_order_id="Buy1",
+            seller_order_id="S1",
+            buyer_broker_id="B2",
+            seller_broker_id="B1",
+            price=100,
+            quantity=10,
+        )
+        object.__setattr__(book._orders["Buy1"], "document_number", "DOC-SAME")
+        object.__setattr__(book._orders["S1"], "document_number", "DOC-SAME")
+        book._trades[0] = bad_trade
+        with pytest.raises(InvariantViolationError, match="same document_number"):
             book.validate_invariants()

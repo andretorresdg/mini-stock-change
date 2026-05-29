@@ -36,7 +36,7 @@ def _request(
 ) -> GatewaySubmitOrder:
     defaults = {
         "broker_id": broker_id,
-        "document_number": "DOC-1",
+        "document_number": f"DOC-{broker_id}",
         "client_order_id": client_order_id,
         "side": Side.BUY,
         "valid_until": _FUTURE,
@@ -84,7 +84,12 @@ class TestIdempotentRetry:
             quantity=10,
         )
         svc.submit_order(ask)
-        bid = _request(client_order_id="bid1", price=100, quantity=10)
+        bid = _request(
+            client_order_id="bid1",
+            broker_id="buyer",
+            price=100,
+            quantity=10,
+        )
         r1 = svc.submit_order(bid)
         r2 = svc.submit_order(bid)
         assert len(r1.trades) == 1

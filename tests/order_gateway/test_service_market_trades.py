@@ -32,7 +32,7 @@ def _ask(
 ) -> GatewaySubmitOrder:
     return GatewaySubmitOrder(
         broker_id=broker,
-        document_number="DOC-001",
+        document_number=f"DOC-{broker}",
         client_order_id=None,
         side=Side.SELL,
         valid_until=_FUTURE,
@@ -50,7 +50,7 @@ def _bid(
 ) -> GatewaySubmitOrder:
     return GatewaySubmitOrder(
         broker_id=broker,
-        document_number="DOC-001",
+        document_number=f"DOC-{broker}",
         client_order_id=None,
         side=Side.BUY,
         valid_until=_FUTURE,

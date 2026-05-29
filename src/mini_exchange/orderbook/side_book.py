@@ -66,6 +66,34 @@ class SideBook:
         if not level:
             del self._levels[price]
 
+    def find_matchable_order(self, incoming: Order) -> Order | None:
+        """Return the best-priority resting order that crosses and is not self-trade."""
+        for price in self._active_prices_best_first():
+            level = self._levels[price]
+            first_active = next((o for o in level if o.is_active), None)
+            if first_active is None:
+                continue
+            if not _prices_cross(incoming, first_active):
+                break
+            for order in level:
+                if not order.is_active:
+                    continue
+                if order.document_number == incoming.document_number:
+                    continue
+                if _prices_cross(incoming, order):
+                    return order
+        return None
+
+    def purge_inactive(self, price: int) -> None:
+        """Remove all inactive orders from a price level."""
+        level = self._levels.get(price)
+        if level is None:
+            return
+        while level and not level[0].is_active:
+            level.popleft()
+        if not level:
+            del self._levels[price]
+
     def snapshot_levels(self) -> list[dict[str, int]]:
         """Aggregate remaining active quantity by price level."""
         result: list[dict[str, int]] = []
@@ -79,8 +107,28 @@ class SideBook:
             result.sort(key=lambda x: x["price"])
         return result
 
+    def _active_prices_best_first(self) -> list[int]:
+        """Return price levels with active orders, best price first."""
+        prices: list[int] = []
+        for price, level in self._levels.items():
+            self._clean_inactive_head(level)
+            if level:
+                prices.append(price)
+        if self._side == Side.BUY:
+            prices.sort(reverse=True)
+        else:
+            prices.sort()
+        return prices
+
     @staticmethod
     def _clean_inactive_head(level: deque[Order]) -> None:
         """Remove inactive orders from the front of a deque."""
         while level and not level[0].is_active:
             level.popleft()
+
+
+def _prices_cross(incoming: Order, resting: Order) -> bool:
+    """Check whether incoming and resting orders have compatible prices."""
+    if incoming.side == Side.BUY:
+        return incoming.price >= resting.price
+    return resting.price >= incoming.price

@@ -28,6 +28,7 @@ class MatchingEngine:
         price: int,
         quantity: int,
         order_id: str | None = None,
+        document_number: str | None = None,
     ) -> ExecutionReport:
         """Route a limit order to the appropriate symbol book."""
         return self.book(symbol).submit_limit_order(
@@ -36,6 +37,7 @@ class MatchingEngine:
             price=price,
             quantity=quantity,
             order_id=order_id,
+            document_number=document_number,
         )
 
     def cancel_order(self, symbol: str, order_id: str) -> bool:

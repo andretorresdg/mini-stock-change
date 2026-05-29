@@ -23,9 +23,9 @@ def _make_client() -> TestClient:
     return TestClient(create_app(order_gateway=svc))
 
 
-def _body(**overrides: object) -> dict[str, object]:
+def _body(*, broker: str = "default", **overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
-        "document_number": "DOC-001",
+        "document_number": f"DOC-{broker}",
         "side": "ASK",
         "valid_until": _VALID_UNTIL,
         "symbol": "AAPL",
@@ -52,7 +52,7 @@ class TestSymbolNormalization:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_10),
+            json=_body(broker="seller", side="ASK", price=PRICE_10),
         )
         resp = client.get("/api/v1/market/aapl/book")
         assert resp.status_code == 200
@@ -66,7 +66,7 @@ class TestRestingOrders:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=100),
+            json=_body(broker="seller", side="ASK", price=PRICE_10, quantity=100),
         )
         resp = client.get("/api/v1/market/AAPL/book")
         assert resp.status_code == 200
@@ -80,7 +80,7 @@ class TestRestingOrders:
         client = _make_client()
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", price=900, quantity=50),
+            json=_body(broker="buyer", side="BID", price=900, quantity=50),
         )
         resp = client.get("/api/v1/market/AAPL/book")
         assert resp.status_code == 200
@@ -94,11 +94,11 @@ class TestRestingOrders:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_20, quantity=100),
+            json=_body(broker="seller", side="ASK", price=PRICE_20, quantity=100),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=100),
+            json=_body(broker="buyer", side="BID", price=PRICE_10, quantity=100),
         )
         resp = client.get("/api/v1/market/AAPL/book")
         data = resp.json()
@@ -145,11 +145,11 @@ class TestAggregation:
         client = _make_client()
         client.post(
             "/api/v1/brokers/s1/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=40),
+            json=_body(broker="s1", side="ASK", price=PRICE_10, quantity=40),
         )
         client.post(
             "/api/v1/brokers/s2/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=60),
+            json=_body(broker="s2", side="ASK", price=PRICE_10, quantity=60),
         )
         resp = client.get("/api/v1/market/AAPL/book")
         data = resp.json()
@@ -160,11 +160,11 @@ class TestAggregation:
         client = _make_client()
         client.post(
             "/api/v1/brokers/b1/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=30),
+            json=_body(broker="b1", side="BID", price=PRICE_10, quantity=30),
         )
         client.post(
             "/api/v1/brokers/b2/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=20),
+            json=_body(broker="b2", side="BID", price=PRICE_10, quantity=20),
         )
         resp = client.get("/api/v1/market/AAPL/book")
         data = resp.json()
@@ -204,11 +204,11 @@ class TestFilledOrdersExcluded:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=100),
+            json=_body(broker="seller", side="ASK", price=PRICE_10, quantity=100),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=100),
+            json=_body(broker="buyer", side="BID", price=PRICE_10, quantity=100),
         )
         resp = client.get("/api/v1/market/AAPL/book")
         data = resp.json()
@@ -219,11 +219,11 @@ class TestFilledOrdersExcluded:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=100),
+            json=_body(broker="seller", side="ASK", price=PRICE_10, quantity=100),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=40),
+            json=_body(broker="buyer", side="BID", price=PRICE_10, quantity=40),
         )
         resp = client.get("/api/v1/market/AAPL/book")
         data = resp.json()

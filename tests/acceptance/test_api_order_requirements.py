@@ -36,9 +36,9 @@ def _make_client() -> TestClient:
     return TestClient(create_app(order_gateway=svc))
 
 
-def _body(**overrides: object) -> dict[str, object]:
+def _body(*, broker: str = "default", **overrides: object) -> dict[str, object]:
     body: dict[str, object] = {
-        "document_number": "DOC-001",
+        "document_number": f"DOC-{broker}",
         "side": "ASK",
         "valid_until": _VALID_UNTIL,
         "symbol": "AAPL",
@@ -59,7 +59,7 @@ class TestResponseContainsAllRequiredFields:
         client = _make_client()
         resp = client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
 
         assert resp.status_code == 201
@@ -84,7 +84,7 @@ class TestResponseContainsAllRequiredFields:
         client = _make_client()
         post_resp = client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
 
         order_id = post_resp.json()["order_id"]
@@ -104,11 +104,11 @@ class TestSamePriceFullMatchThroughAPI:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-b", side="BID", price=PRICE_10, quantity=1_000),
         )
 
         assert bid_resp.status_code == 201
@@ -121,11 +121,11 @@ class TestSamePriceFullMatchThroughAPI:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-b", side="BID", price=PRICE_10, quantity=1_000),
         )
 
         data = bid_resp.json()
@@ -137,11 +137,11 @@ class TestSamePriceFullMatchThroughAPI:
         client = _make_client()
         ask_resp = client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-b", side="BID", price=PRICE_10, quantity=1_000),
         )
 
         ask_id = ask_resp.json()["order_id"]
@@ -154,11 +154,11 @@ class TestSamePriceFullMatchThroughAPI:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-b", side="BID", price=PRICE_10, quantity=1_000),
         )
 
         bid_id = bid_resp.json()["order_id"]
@@ -178,11 +178,11 @@ class TestNoMatchThroughAPI:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_20, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_20, quantity=1_000),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-b", side="BID", price=PRICE_10, quantity=1_000),
         )
 
         assert bid_resp.status_code == 201
@@ -194,11 +194,11 @@ class TestNoMatchThroughAPI:
         client = _make_client()
         ask_resp = client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_20, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_20, quantity=1_000),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-b", side="BID", price=PRICE_10, quantity=1_000),
         )
 
         ask_id = ask_resp.json()["order_id"]
@@ -220,11 +220,11 @@ class TestPriceGapThroughAPI:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_20, quantity=1_000),
+            json=_body(broker="broker-b", side="BID", price=PRICE_20, quantity=1_000),
         )
 
         assert bid_resp.status_code == 201
@@ -236,11 +236,11 @@ class TestPriceGapThroughAPI:
         client = _make_client()
         ask_resp = client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_20, quantity=1_000),
+            json=_body(broker="broker-b", side="BID", price=PRICE_20, quantity=1_000),
         )
 
         ask_id = ask_resp.json()["order_id"]
@@ -262,11 +262,11 @@ class TestPartialFillThroughAPI:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=500),
+            json=_body(broker="broker-b", side="BID", price=PRICE_10, quantity=500),
         )
 
         assert bid_resp.status_code == 201
@@ -279,11 +279,11 @@ class TestPartialFillThroughAPI:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=500),
+            json=_body(broker="broker-b", side="BID", price=PRICE_10, quantity=500),
         )
 
         assert bid_resp.json()["trades"][0]["quantity"] == 500
@@ -292,11 +292,11 @@ class TestPartialFillThroughAPI:
         client = _make_client()
         ask_resp = client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=500),
+            json=_body(broker="broker-b", side="BID", price=PRICE_10, quantity=500),
         )
 
         ask_id = ask_resp.json()["order_id"]
@@ -319,15 +319,15 @@ class TestMultipleSellersOneLargerBuyerThroughAPI:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=500),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=500),
         )
         client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=500),
+            json=_body(broker="broker-b", side="ASK", price=PRICE_10, quantity=500),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-c/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_500),
+            json=_body(broker="broker-c", side="BID", price=PRICE_10, quantity=1_500),
         )
 
         assert bid_resp.status_code == 201
@@ -337,15 +337,15 @@ class TestMultipleSellersOneLargerBuyerThroughAPI:
         client = _make_client()
         ask_a_resp = client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=500),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=500),
         )
         ask_b_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=500),
+            json=_body(broker="broker-b", side="ASK", price=PRICE_10, quantity=500),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-c/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_500),
+            json=_body(broker="broker-c", side="BID", price=PRICE_10, quantity=1_500),
         )
 
         ask_a_id = ask_a_resp.json()["order_id"]
@@ -358,15 +358,15 @@ class TestMultipleSellersOneLargerBuyerThroughAPI:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=500),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=500),
         )
         client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=500),
+            json=_body(broker="broker-b", side="ASK", price=PRICE_10, quantity=500),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-c/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_500),
+            json=_body(broker="broker-c", side="BID", price=PRICE_10, quantity=1_500),
         )
 
         data = bid_resp.json()
@@ -384,15 +384,15 @@ class TestFifoAtSamePriceThroughAPI:
         client = _make_client()
         ask_a_resp = client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-b", side="ASK", price=PRICE_10, quantity=1_000),
         )
         bid_resp = client.post(
             "/api/v1/brokers/broker-c/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-c", side="BID", price=PRICE_10, quantity=1_000),
         )
 
         ask_a_id = ask_a_resp.json()["order_id"]
@@ -403,15 +403,15 @@ class TestFifoAtSamePriceThroughAPI:
         client = _make_client()
         ask_a_resp = client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-b", side="ASK", price=PRICE_10, quantity=1_000),
         )
         client.post(
             "/api/v1/brokers/broker-c/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-c", side="BID", price=PRICE_10, quantity=1_000),
         )
 
         ask_a_id = ask_a_resp.json()["order_id"]
@@ -423,15 +423,15 @@ class TestFifoAtSamePriceThroughAPI:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker-a/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-a", side="ASK", price=PRICE_10, quantity=1_000),
         )
         ask_b_resp = client.post(
             "/api/v1/brokers/broker-b/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-b", side="ASK", price=PRICE_10, quantity=1_000),
         )
         client.post(
             "/api/v1/brokers/broker-c/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=1_000),
+            json=_body(broker="broker-c", side="BID", price=PRICE_10, quantity=1_000),
         )
 
         ask_b_id = ask_b_resp.json()["order_id"]

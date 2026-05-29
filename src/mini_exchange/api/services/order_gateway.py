@@ -124,6 +124,7 @@ class OrderGatewayService:
             side=core_side,
             price=request.price,
             quantity=request.quantity,
+            document_number=request.document_number,
         )
         order = report.accepted_order
         self._metadata[order.order_id] = OrderMetadata(

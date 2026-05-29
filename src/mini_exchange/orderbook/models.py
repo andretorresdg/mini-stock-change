@@ -28,6 +28,7 @@ class Order:
 
     order_id: str
     broker_id: str
+    document_number: str
     symbol: str
     side: Side
     price: int
@@ -42,6 +43,9 @@ class Order:
             raise ValueError(msg)
         if not self.broker_id:
             msg = "broker_id must be non-empty"
+            raise ValueError(msg)
+        if not self.document_number:
+            msg = "document_number must be non-empty"
             raise ValueError(msg)
         if not self.symbol:
             msg = "symbol must be non-empty"

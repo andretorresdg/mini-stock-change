@@ -22,9 +22,9 @@ def _make_client() -> TestClient:
     return TestClient(create_app(order_gateway=svc))
 
 
-def _body(**overrides: object) -> dict[str, object]:
+def _body(*, broker: str = "default", **overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
-        "document_number": "DOC-001",
+        "document_number": f"DOC-{broker}",
         "side": "ASK",
         "valid_until": _VALID_UNTIL,
         "symbol": "AAPL",
@@ -50,11 +50,11 @@ class TestSymbolNormalization:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_10),
+            json=_body(broker="seller", side="ASK", price=PRICE_10),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", price=PRICE_10),
+            json=_body(broker="buyer", side="BID", price=PRICE_10),
         )
         resp = client.get("/api/v1/market/aapl/trades")
         assert resp.status_code == 200
@@ -68,11 +68,11 @@ class TestSamePriceMatch:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=50),
+            json=_body(broker="seller", side="ASK", price=PRICE_10, quantity=50),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=50),
+            json=_body(broker="buyer", side="BID", price=PRICE_10, quantity=50),
         )
         resp = client.get("/api/v1/market/AAPL/trades")
         assert resp.status_code == 200
@@ -89,11 +89,11 @@ class TestSamePriceMatch:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=100),
+            json=_body(broker="seller", side="ASK", price=PRICE_10, quantity=100),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", price=PRICE_20, quantity=100),
+            json=_body(broker="buyer", side="BID", price=PRICE_20, quantity=100),
         )
         resp = client.get("/api/v1/market/AAPL/trades")
         data = resp.json()
@@ -105,11 +105,11 @@ class TestPartialFill:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_10, quantity=100),
+            json=_body(broker="seller", side="ASK", price=PRICE_10, quantity=100),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", price=PRICE_10, quantity=40),
+            json=_body(broker="buyer", side="BID", price=PRICE_10, quantity=40),
         )
         resp = client.get("/api/v1/market/AAPL/trades")
         data = resp.json()
@@ -123,11 +123,11 @@ class TestMultipleTrades:
         for s, b in [("s1", "b1"), ("s2", "b2"), ("s3", "b3")]:
             client.post(
                 f"/api/v1/brokers/{s}/orders",
-                json=_body(side="ASK", price=PRICE_10, quantity=10),
+                json=_body(broker=s, side="ASK", price=PRICE_10, quantity=10),
             )
             client.post(
                 f"/api/v1/brokers/{b}/orders",
-                json=_body(side="BID", price=PRICE_10, quantity=10),
+                json=_body(broker=b, side="BID", price=PRICE_10, quantity=10),
             )
         resp = client.get("/api/v1/market/AAPL/trades")
         assert len(resp.json()["trades"]) == 3
@@ -137,11 +137,11 @@ class TestMultipleTrades:
         for s, b in [("s1", "b1"), ("s2", "b2"), ("s3", "b3")]:
             client.post(
                 f"/api/v1/brokers/{s}/orders",
-                json=_body(side="ASK", price=PRICE_10, quantity=10),
+                json=_body(broker=s, side="ASK", price=PRICE_10, quantity=10),
             )
             client.post(
                 f"/api/v1/brokers/{b}/orders",
-                json=_body(side="BID", price=PRICE_10, quantity=10),
+                json=_body(broker=b, side="BID", price=PRICE_10, quantity=10),
             )
         resp = client.get("/api/v1/market/AAPL/trades")
         seqs = [t["sequence"] for t in resp.json()["trades"]]
@@ -153,19 +153,19 @@ class TestSymbolFilter:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", symbol="AAPL", price=PRICE_10),
+            json=_body(broker="seller", side="ASK", symbol="AAPL", price=PRICE_10),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", symbol="AAPL", price=PRICE_10),
+            json=_body(broker="buyer", side="BID", symbol="AAPL", price=PRICE_10),
         )
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", symbol="GOOG", price=PRICE_10),
+            json=_body(broker="seller", side="ASK", symbol="GOOG", price=PRICE_10),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", symbol="GOOG", price=PRICE_10),
+            json=_body(broker="buyer", side="BID", symbol="GOOG", price=PRICE_10),
         )
         aapl = client.get("/api/v1/market/AAPL/trades").json()
         goog = client.get("/api/v1/market/GOOG/trades").json()
@@ -181,11 +181,11 @@ class TestLimitParameter:
         for s, b in [("s1", "b1"), ("s2", "b2"), ("s3", "b3")]:
             client.post(
                 f"/api/v1/brokers/{s}/orders",
-                json=_body(side="ASK", price=PRICE_10, quantity=10),
+                json=_body(broker=s, side="ASK", price=PRICE_10, quantity=10),
             )
             client.post(
                 f"/api/v1/brokers/{b}/orders",
-                json=_body(side="BID", price=PRICE_10, quantity=10),
+                json=_body(broker=b, side="BID", price=PRICE_10, quantity=10),
             )
         resp = client.get("/api/v1/market/AAPL/trades?limit=2")
         assert resp.status_code == 200
@@ -207,11 +207,13 @@ class TestPrivacy:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_10, document_number="PRIV-DOC"),
+            json=_body(
+                broker="seller", side="ASK", price=PRICE_10, document_number="PRIV-DOC"
+            ),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", price=PRICE_10),
+            json=_body(broker="buyer", side="BID", price=PRICE_10),
         )
         resp = client.get("/api/v1/market/AAPL/trades")
         trade = resp.json()["trades"][0]
@@ -222,11 +224,11 @@ class TestPrivacy:
         client = _make_client()
         client.post(
             "/api/v1/brokers/secret-seller/orders",
-            json=_body(side="ASK", price=PRICE_10),
+            json=_body(broker="secret-seller", side="ASK", price=PRICE_10),
         )
         client.post(
             "/api/v1/brokers/secret-buyer/orders",
-            json=_body(side="BID", price=PRICE_10),
+            json=_body(broker="secret-buyer", side="BID", price=PRICE_10),
         )
         resp = client.get("/api/v1/market/AAPL/trades")
         trade = resp.json()["trades"][0]
@@ -238,11 +240,11 @@ class TestPrivacy:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_body(side="ASK", price=PRICE_10),
+            json=_body(broker="seller", side="ASK", price=PRICE_10),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_body(side="BID", price=PRICE_10),
+            json=_body(broker="buyer", side="BID", price=PRICE_10),
         )
         resp = client.get("/api/v1/market/AAPL/trades")
         trade = resp.json()["trades"][0]
