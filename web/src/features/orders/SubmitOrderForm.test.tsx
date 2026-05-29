@@ -147,6 +147,11 @@ describe("SubmitOrderForm – field rendering", () => {
     renderForm();
     expect(screen.getByRole("button", { name: /submit order/i })).toBeInTheDocument();
   });
+
+  it("uses a two-column page layout", () => {
+    const { container } = render(<SubmitOrderForm />);
+    expect(container.querySelector(".two-column-page")).toBeInTheDocument();
+  });
 });
 
 // ── Broker ID validation ─────────────────────────────────────────────────────
@@ -685,7 +690,7 @@ describe("SubmitOrderForm – loading state", () => {
     });
 
     // Submit via the form element directly — guard in handleSubmit stops it.
-    const form = screen.getByRole("button", { name: /submitting/i }).closest("form")!;
+    const form = document.getElementById("submit-order-form")!;
     fireEvent.submit(form);
 
     expect(vi.mocked(apiClient.submitOrder)).toHaveBeenCalledOnce();

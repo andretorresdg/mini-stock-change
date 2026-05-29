@@ -112,6 +112,13 @@ describe("OrderLookupForm – rendering", () => {
     renderForm();
     expect(screen.getByText(/order must belong to the specified broker\/user/i)).toBeInTheDocument();
   });
+
+  it("shows empty state before lookup", () => {
+    renderForm();
+    expect(
+      screen.getByText(/enter a broker id and order id to view order status/i),
+    ).toBeInTheDocument();
+  });
 });
 
 // ── Validation / button state ─────────────────────────────────────────────────

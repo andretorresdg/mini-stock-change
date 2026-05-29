@@ -27,3 +27,54 @@ a {
 a:hover {
   text-decoration: underline;
 }
+
+.two-column-page {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  width: 100%;
+  max-width: 72rem;
+}
+
+@media (min-width: 900px) {
+  .two-column-page {
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.page-column {
+  min-width: 0;
+}
+
+.panel {
+  background: #1a202c;
+  border: 1px solid #2d3748;
+  border-radius: 6px;
+  padding: 1rem;
+}
+
+.panel__title {
+  font-size: 0.9rem;
+  color: #a0aec0;
+  margin-bottom: 0.75rem;
+}
+
+.empty-state {
+  color: #718096;
+  font-size: 0.9rem;
+  padding: 1rem;
+  background: #1a202c;
+  border: 1px dashed #2d3748;
+  border-radius: 6px;
+}
+
+.page-heading {
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+}
+
+.page-section {
+  width: 100%;
+  max-width: 72rem;
+}

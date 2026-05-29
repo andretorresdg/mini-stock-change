@@ -68,6 +68,13 @@ describe("MarketView – initial rendering", () => {
     renderMarket();
     expect(screen.getByRole("button", { name: /load market data/i })).toBeDisabled();
   });
+
+  it("shows empty state before loading market data", () => {
+    renderMarket();
+    expect(
+      screen.getByText(/load a symbol to view the current book and recent trades/i),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("MarketView – symbol input", () => {
