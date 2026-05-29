@@ -28,7 +28,8 @@ class MatchingEngine:
         price: int,
         quantity: int,
         order_id: str | None = None,
-        document_number: str | None = None,
+        *,
+        document_number: str,
     ) -> ExecutionReport:
         """Route a limit order to the appropriate symbol book."""
         return self.book(symbol).submit_limit_order(

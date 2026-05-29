@@ -37,30 +37,65 @@ class TestSamePriceFullMatch:
     """
 
     def test_one_trade_is_generated(self, engine: MatchingEngine) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000)
-        report = engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            document_number="11111111100",
+        )
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000, document_number="22222222200"
+        )
 
         assert len(report.trades) == 1
 
     def test_execution_price_is_ten_dollars(self, engine: MatchingEngine) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000)
-        report = engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            document_number="11111111100",
+        )
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000, document_number="22222222200"
+        )
 
         assert report.trades[0].price == PRICE_10  # 1_000 cents = $10.00
         assert report.trades[0].quantity == 1_000
 
     def test_buyer_is_fully_filled(self, engine: MatchingEngine) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000)
-        report = engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            document_number="11111111100",
+        )
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000, document_number="22222222200"
+        )
 
         assert report.accepted_order.status == OrderStatus.FILLED
         assert report.accepted_order.remaining == 0
 
     def test_seller_is_fully_filled(self, engine: MatchingEngine) -> None:
         engine.submit_limit_order(
-            SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000, order_id="ask-a"
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            order_id="ask-a",
+            document_number="11111111100",
         )
-        engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000)
+        engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000, document_number="22222222200"
+        )
 
         ask = engine.book(SYMBOL).get_order("ask-a")
         assert ask is not None
@@ -75,17 +110,32 @@ class TestNoMatch:
     """ASK 1000 AAPL @ $20, BID 1000 AAPL @ $10 → bid below ask → no trade."""
 
     def test_no_trades_are_generated(self, engine: MatchingEngine) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_20, 1_000)
-        report = engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_20,
+            1_000,
+            document_number="11111111100",
+        )
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000, document_number="22222222200"
+        )
 
         assert len(report.trades) == 0
 
     def test_both_orders_remain_open(self, engine: MatchingEngine) -> None:
         engine.submit_limit_order(
-            SYMBOL, "seller-a", Side.SELL, PRICE_20, 1_000, order_id="ask-a"
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_20,
+            1_000,
+            order_id="ask-a",
+            document_number="11111111100",
         )
         bid_report = engine.submit_limit_order(
-            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000
+            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000, document_number="22222222200"
         )
 
         ask = engine.book(SYMBOL).get_order("ask-a")
@@ -96,8 +146,17 @@ class TestNoMatch:
     def test_book_snapshot_shows_resting_ask_and_bid(
         self, engine: MatchingEngine
     ) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_20, 1_000)
-        engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_20,
+            1_000,
+            document_number="11111111100",
+        )
+        engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 1_000, document_number="22222222200"
+        )
 
         snap = engine.snapshot(SYMBOL)
         ask_prices = [level["price"] for level in snap["asks"]]
@@ -118,14 +177,32 @@ class TestPriceGapSellerPriceWins:
     def test_execution_price_is_seller_price_not_buyer_price(
         self, engine: MatchingEngine
     ) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000)
-        report = engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_20, 1_000)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            document_number="11111111100",
+        )
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_20, 1_000, document_number="22222222200"
+        )
 
         assert report.trades[0].price == PRICE_10  # $10.00, not $20.00
 
     def test_both_orders_are_fully_executed(self, engine: MatchingEngine) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000)
-        report = engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_20, 1_000)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            document_number="11111111100",
+        )
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_20, 1_000, document_number="22222222200"
+        )
 
         assert report.accepted_order.status == OrderStatus.FILLED
         assert report.trades[0].quantity == 1_000
@@ -138,14 +215,32 @@ class TestPartialExecution:
     """ASK 1000 AAPL @ $10, BID 500 AAPL @ $10 → buyer filled, seller 500 remaining."""
 
     def test_trade_quantity_equals_buyer_quantity(self, engine: MatchingEngine) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000)
-        report = engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_10, 500)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            document_number="11111111100",
+        )
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 500, document_number="22222222200"
+        )
 
         assert report.trades[0].quantity == 500
 
     def test_buyer_is_fully_filled(self, engine: MatchingEngine) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000)
-        report = engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_10, 500)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            document_number="11111111100",
+        )
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 500, document_number="22222222200"
+        )
 
         assert report.accepted_order.status == OrderStatus.FILLED
         assert report.accepted_order.remaining == 0
@@ -154,9 +249,17 @@ class TestPartialExecution:
         self, engine: MatchingEngine
     ) -> None:
         engine.submit_limit_order(
-            SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000, order_id="ask-a"
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            order_id="ask-a",
+            document_number="11111111100",
         )
-        engine.submit_limit_order(SYMBOL, "buyer-b", Side.BUY, PRICE_10, 500)
+        engine.submit_limit_order(
+            SYMBOL, "buyer-b", Side.BUY, PRICE_10, 500, document_number="22222222200"
+        )
 
         ask = engine.book(SYMBOL).get_order("ask-a")
         assert ask is not None
@@ -174,32 +277,66 @@ class TestMultipleSellersOneLargerBuyer:
     """
 
     def test_two_trades_are_generated(self, engine: MatchingEngine) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_10, 500)
-        engine.submit_limit_order(SYMBOL, "seller-b", Side.SELL, PRICE_10, 500)
-        report = engine.submit_limit_order(SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_500)
+        engine.submit_limit_order(
+            SYMBOL, "seller-a", Side.SELL, PRICE_10, 500, document_number="11111111100"
+        )
+        engine.submit_limit_order(
+            SYMBOL, "seller-b", Side.SELL, PRICE_10, 500, document_number="22222222200"
+        )
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_500, document_number="33333333300"
+        )
 
         assert len(report.trades) == 2
 
     def test_seller_a_fills_first_then_seller_b(self, engine: MatchingEngine) -> None:
         engine.submit_limit_order(
-            SYMBOL, "seller-a", Side.SELL, PRICE_10, 500, order_id="ask-a"
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            500,
+            order_id="ask-a",
+            document_number="11111111100",
         )
         engine.submit_limit_order(
-            SYMBOL, "seller-b", Side.SELL, PRICE_10, 500, order_id="ask-b"
+            SYMBOL,
+            "seller-b",
+            Side.SELL,
+            PRICE_10,
+            500,
+            order_id="ask-b",
+            document_number="22222222200",
         )
-        report = engine.submit_limit_order(SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_500)
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_500, document_number="33333333300"
+        )
 
         assert report.trades[0].seller_order_id == "ask-a"
         assert report.trades[1].seller_order_id == "ask-b"
 
     def test_both_sellers_are_fully_filled(self, engine: MatchingEngine) -> None:
         engine.submit_limit_order(
-            SYMBOL, "seller-a", Side.SELL, PRICE_10, 500, order_id="ask-a"
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            500,
+            order_id="ask-a",
+            document_number="11111111100",
         )
         engine.submit_limit_order(
-            SYMBOL, "seller-b", Side.SELL, PRICE_10, 500, order_id="ask-b"
+            SYMBOL,
+            "seller-b",
+            Side.SELL,
+            PRICE_10,
+            500,
+            order_id="ask-b",
+            document_number="22222222200",
         )
-        engine.submit_limit_order(SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_500)
+        engine.submit_limit_order(
+            SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_500, document_number="33333333300"
+        )
 
         ask_a = engine.book(SYMBOL).get_order("ask-a")
         ask_b = engine.book(SYMBOL).get_order("ask-b")
@@ -209,9 +346,15 @@ class TestMultipleSellersOneLargerBuyer:
     def test_buyer_remains_partially_filled_with_500_remaining(
         self, engine: MatchingEngine
     ) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_10, 500)
-        engine.submit_limit_order(SYMBOL, "seller-b", Side.SELL, PRICE_10, 500)
-        report = engine.submit_limit_order(SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_500)
+        engine.submit_limit_order(
+            SYMBOL, "seller-a", Side.SELL, PRICE_10, 500, document_number="11111111100"
+        )
+        engine.submit_limit_order(
+            SYMBOL, "seller-b", Side.SELL, PRICE_10, 500, document_number="22222222200"
+        )
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_500, document_number="33333333300"
+        )
 
         assert report.accepted_order.status == OrderStatus.PARTIALLY_FILLED
         assert report.accepted_order.remaining == 500
@@ -228,35 +371,79 @@ class TestFifoAtSamePriceLevel:
     ) -> None:
         # seller-a submits first
         engine.submit_limit_order(
-            SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000, order_id="ask-a"
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            order_id="ask-a",
+            document_number="11111111100",
         )
         # seller-b submits second at the same price
         engine.submit_limit_order(
-            SYMBOL, "seller-b", Side.SELL, PRICE_10, 1_000, order_id="ask-b"
+            SYMBOL,
+            "seller-b",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            order_id="ask-b",
+            document_number="22222222200",
         )
         # buyer-c buys exactly 1000 — should match seller-a only
-        report = engine.submit_limit_order(SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_000)
+        report = engine.submit_limit_order(
+            SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_000, document_number="33333333300"
+        )
 
         assert len(report.trades) == 1
         assert report.trades[0].seller_order_id == "ask-a"
 
     def test_earlier_seller_is_fully_filled(self, engine: MatchingEngine) -> None:
         engine.submit_limit_order(
-            SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000, order_id="ask-a"
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            order_id="ask-a",
+            document_number="11111111100",
         )
-        engine.submit_limit_order(SYMBOL, "seller-b", Side.SELL, PRICE_10, 1_000)
-        engine.submit_limit_order(SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_000)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-b",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            document_number="22222222200",
+        )
+        engine.submit_limit_order(
+            SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_000, document_number="33333333300"
+        )
 
         ask_a = engine.book(SYMBOL).get_order("ask-a")
         assert ask_a is not None
         assert ask_a.status == OrderStatus.FILLED
 
     def test_later_seller_remains_open(self, engine: MatchingEngine) -> None:
-        engine.submit_limit_order(SYMBOL, "seller-a", Side.SELL, PRICE_10, 1_000)
         engine.submit_limit_order(
-            SYMBOL, "seller-b", Side.SELL, PRICE_10, 1_000, order_id="ask-b"
+            SYMBOL,
+            "seller-a",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            document_number="11111111100",
         )
-        engine.submit_limit_order(SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_000)
+        engine.submit_limit_order(
+            SYMBOL,
+            "seller-b",
+            Side.SELL,
+            PRICE_10,
+            1_000,
+            order_id="ask-b",
+            document_number="22222222200",
+        )
+        engine.submit_limit_order(
+            SYMBOL, "buyer-c", Side.BUY, PRICE_10, 1_000, document_number="33333333300"
+        )
 
         ask_b = engine.book(SYMBOL).get_order("ask-b")
         assert ask_b is not None

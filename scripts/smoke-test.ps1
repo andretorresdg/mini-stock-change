@@ -22,7 +22,7 @@ if ($web.StatusCode -ne 200) { throw "Web UI returned $($web.StatusCode)" }
 Write-Host "OK  GET $WebBase/ (web UI)"
 
 $orderBody = @{
-    document_number = "DOC-SMOKE"
+    document_number = "11111111100"
     side            = "ASK"
     valid_until     = $null
     symbol          = "SMOK"

@@ -319,7 +319,7 @@ export default function SubmitOrderForm() {
           id="documentNumberHelp"
           style={{ color: "#718096", fontSize: "0.8rem", display: "block" }}
         >
-          Required to identify the customer represented by the broker.
+          Identifies the customer represented by the broker.
         </span>
         <input
           id="documentNumber"

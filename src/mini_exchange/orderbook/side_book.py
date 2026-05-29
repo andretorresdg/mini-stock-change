@@ -68,6 +68,8 @@ class SideBook:
 
     def find_matchable_order(self, incoming: Order) -> Order | None:
         """Return the best-priority resting order that crosses and is not self-trade."""
+        # Self-trade prevention uses customer document_number, not broker_id.
+        # The same customer may route orders through different brokers.
         for price in self._active_prices_best_first():
             level = self._levels[price]
             first_active = next((o for o in level if o.is_active), None)

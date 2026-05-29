@@ -21,7 +21,7 @@ stack is running. For automated checks first, run `./scripts/smoke-test.sh`.
 2. Confirm **Order validity** defaults to **No expiration (GTC)**.
 3. Fill in:
    - Broker / username: `qa-broker-a`
-   - Customer document number: `DOC-QA-001`
+   - Customer document number: `11111111100`
    - Side: **ASK**
    - Stock symbol: `AAPL`
    - Unit price (USD): `10.50` (helper text mentions dot decimal format)
@@ -35,7 +35,7 @@ stack is running. For automated checks first, run `./scripts/smoke-test.sh`.
 1. On the submit page, change validity to **Expires at specific UTC date/time**.
 2. Pick a future date/time (helper: *Times are interpreted as UTC.*).
 3. Submit a **BID** at `10.50` for symbol `AAPL`, quantity `5`, broker
-   `qa-broker-b`, document `DOC-QA-002`.
+   `qa-broker-b`, document `22222222200`.
 4. If the order crosses the resting ASK, confirm status **FILLED** and a trade
    at the seller price (`1050` cents = $10.50).
 
@@ -68,7 +68,7 @@ stack is running. For automated checks first, run `./scripts/smoke-test.sh`.
 curl -s -X POST http://localhost:8000/api/v1/brokers/curl-broker/orders \
   -H "Content-Type: application/json" \
   -d '{
-    "document_number": "DOC-CURL",
+    "document_number": "11111111100",
     "side": "BID",
     "valid_until": null,
     "symbol": "MSFT",
@@ -87,7 +87,7 @@ PowerShell equivalent for a GTC order:
 
 ```powershell
 $body = @{
-  document_number = "DOC-CURL"
+  document_number = "11111111100"
   side            = "BID"
   valid_until     = $null
   symbol          = "MSFT"

@@ -86,7 +86,8 @@ class OrderBook:
         price: int,
         quantity: int,
         order_id: str | None = None,
-        document_number: str | None = None,
+        *,
+        document_number: str,
     ) -> ExecutionReport:
         """Submit a limit order, match it, and return an execution report."""
         self._order_seq += 1
@@ -95,8 +96,6 @@ class OrderBook:
         if order_id in self._orders:
             msg = f"duplicate order_id: {order_id}"
             raise ValueError(msg)
-        if document_number is None:
-            document_number = f"DOC-{broker_id}"
         order = Order(
             order_id=order_id,
             broker_id=broker_id,

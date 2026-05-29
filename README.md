@@ -89,7 +89,15 @@ Details: [web/README.md](web/README.md).
 Full request/response reference: [docs/api.md](docs/api.md).
 
 There is **no authentication** in this MVP. The broker ID in the URL path is
-trusted as supplied.
+trusted as supplied. The request body must include a separate
+`document_number` for the customer who owns the order — it must not be inferred
+from the broker ID.
+
+## Self-trade prevention
+
+Orders that share the same customer `document_number` do not match each other,
+even when submitted by different brokers. Different customer documents may
+trade normally when prices cross.
 
 ## Developer scripts
 
@@ -170,6 +178,8 @@ See [web/README.md](web/README.md) for page-level UI documentation.
 | Execution price | Always the **seller** order price |
 | Partial fills | Supported across multiple trades |
 | FIFO | Within the same price level, older orders match first |
+| Self-trade prevention | Same customer `document_number` never matches, even across brokers |
+| Broker vs customer | `broker_id` is the submitting broker; `document_number` is the customer owner |
 
 ## Architecture
 

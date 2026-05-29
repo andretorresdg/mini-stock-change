@@ -21,7 +21,7 @@ const SAMPLE_ORDER: OrderResponse = {
   order_id: ORDER_ID,
   broker_id: BROKER,
   client_order_id: null,
-  document_number: "DOC-001",
+  document_number: "11111111100",
   side: "ASK",
   symbol: "AAPL",
   price: 150,
@@ -35,7 +35,7 @@ const SAMPLE_ORDER: OrderResponse = {
 
 const SUBMIT_REQ: SubmitOrderRequest = {
   client_order_id: null,
-  document_number: "DOC-001",
+  document_number: "11111111100",
   side: "ASK",
   valid_until: "2030-01-01T00:00:00Z",
   symbol: "AAPL",

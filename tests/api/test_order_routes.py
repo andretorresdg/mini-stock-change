@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from mini_exchange.api.app import create_app
 from mini_exchange.order_gateway.service import OrderGatewayService
+from tests.customer_documents import CUST_111, CUST_222
 
 _NOW = datetime(2030, 6, 15, 12, 0, 0, tzinfo=UTC)
 _FUTURE = _NOW + timedelta(hours=1)
@@ -26,9 +27,11 @@ def _make_client(clock: _MutableClock | None = None) -> TestClient:
     return TestClient(app)
 
 
-def _valid_body(*, customer: str = "DOC-001", **overrides: object) -> dict[str, object]:
+def _valid_body(
+    *, document_number: str = CUST_111, **overrides: object
+) -> dict[str, object]:
     body: dict[str, object] = {
-        "document_number": customer,
+        "document_number": document_number,
         "side": "ASK",
         "valid_until": "2031-01-01T00:00:00Z",
         "symbol": "AAPL",
@@ -69,11 +72,11 @@ class TestPriceGapMatchHTTP:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_valid_body(customer="DOC-seller", side="ASK", price=90),
+            json=_valid_body(document_number=CUST_111, side="ASK", price=90),
         )
         resp = client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_valid_body(customer="DOC-buyer", side="BID", price=100),
+            json=_valid_body(document_number=CUST_222, side="BID", price=100),
         )
         assert resp.status_code == 201
         data = resp.json()
@@ -97,11 +100,11 @@ class TestGetFilledHTTP:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_valid_body(customer="DOC-seller", side="ASK", price=100),
+            json=_valid_body(document_number=CUST_111, side="ASK", price=100),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_valid_body(customer="DOC-buyer", side="BID", price=100),
+            json=_valid_body(document_number=CUST_222, side="BID", price=100),
         )
         resp = client.get("/api/v1/brokers/seller/orders/AAPL-O-1")
         assert resp.status_code == 200
@@ -113,11 +116,15 @@ class TestGetPartiallyFilledHTTP:
         client = _make_client()
         client.post(
             "/api/v1/brokers/seller/orders",
-            json=_valid_body(customer="DOC-seller", side="ASK", price=100, quantity=20),
+            json=_valid_body(
+                document_number=CUST_111, side="ASK", price=100, quantity=20
+            ),
         )
         client.post(
             "/api/v1/brokers/buyer/orders",
-            json=_valid_body(customer="DOC-buyer", side="BID", price=100, quantity=5),
+            json=_valid_body(
+                document_number=CUST_222, side="BID", price=100, quantity=5
+            ),
         )
         resp = client.get("/api/v1/brokers/seller/orders/AAPL-O-1")
         assert resp.status_code == 200
@@ -176,7 +183,9 @@ class TestClientOrderIdHTTP:
         client = _make_client()
         resp = client.post(
             "/api/v1/brokers/broker1/orders",
-            json=_valid_body(customer="DOC-broker1", side="BID", client_order_id=None),
+            json=_valid_body(
+                document_number=CUST_111, side="BID", client_order_id=None
+            ),
         )
         assert resp.status_code == 201
         assert resp.json()["client_order_id"] is None
@@ -185,7 +194,7 @@ class TestClientOrderIdHTTP:
         client = _make_client()
         resp = client.post(
             "/api/v1/brokers/broker1/orders",
-            json=_valid_body(customer="DOC-broker1", side="BID", client_order_id=""),
+            json=_valid_body(document_number=CUST_111, side="BID", client_order_id=""),
         )
         assert resp.status_code == 422
 
@@ -193,7 +202,9 @@ class TestClientOrderIdHTTP:
         client = _make_client()
         resp = client.post(
             "/api/v1/brokers/broker1/orders",
-            json=_valid_body(customer="DOC-broker1", side="BID", client_order_id="   "),
+            json=_valid_body(
+                document_number=CUST_111, side="BID", client_order_id="   "
+            ),
         )
         assert resp.status_code == 422
 
@@ -202,7 +213,7 @@ class TestClientOrderIdHTTP:
         resp = client.post(
             "/api/v1/brokers/broker1/orders",
             json=_valid_body(
-                customer="DOC-broker1", side="BID", client_order_id="  ref-9  "
+                document_number=CUST_111, side="BID", client_order_id="  ref-9  "
             ),
         )
         assert resp.status_code == 201
@@ -214,7 +225,7 @@ class TestGtcOrdersHTTP:
         client = _make_client()
         resp = client.post(
             "/api/v1/brokers/broker1/orders",
-            json=_valid_body(customer="DOC-broker1", side="BID", valid_until=None),
+            json=_valid_body(document_number=CUST_111, side="BID", valid_until=None),
         )
         assert resp.status_code == 201
         assert resp.json()["valid_until"] is None
@@ -231,7 +242,7 @@ class TestGtcOrdersHTTP:
         client = _make_client()
         client.post(
             "/api/v1/brokers/broker1/orders",
-            json=_valid_body(customer="DOC-broker1", side="BID", valid_until=None),
+            json=_valid_body(document_number=CUST_111, side="BID", valid_until=None),
         )
         resp = client.get("/api/v1/brokers/broker1/orders/AAPL-O-1")
         assert resp.status_code == 200
@@ -243,14 +254,14 @@ class TestGtcOrdersHTTP:
         client.post(
             "/api/v1/brokers/seller/orders",
             json=_valid_body(
-                customer="DOC-seller", side="ASK", price=100, valid_until=None
+                document_number=CUST_111, side="ASK", price=100, valid_until=None
             ),
         )
         clock.now = _NOW + timedelta(days=365)
         resp = client.post(
             "/api/v1/brokers/buyer/orders",
             json=_valid_body(
-                customer="DOC-buyer", side="BID", price=100, valid_until=None
+                document_number=CUST_222, side="BID", price=100, valid_until=None
             ),
         )
         assert resp.status_code == 201
@@ -265,7 +276,7 @@ class TestExpiredAtSubmissionHTTP:
         resp = client.post(
             "/api/v1/brokers/broker1/orders",
             json=_valid_body(
-                customer="DOC-broker1", valid_until="2020-01-01T00:00:00Z"
+                document_number=CUST_111, valid_until="2020-01-01T00:00:00Z"
             ),
         )
         assert resp.status_code == 400
@@ -279,7 +290,7 @@ class TestExpirationThroughHTTP:
         client.post(
             "/api/v1/brokers/seller/orders",
             json=_valid_body(
-                customer="DOC-seller",
+                document_number=CUST_111,
                 side="ASK",
                 price=100,
                 valid_until=(_NOW + timedelta(minutes=5)).isoformat(),
@@ -289,7 +300,7 @@ class TestExpirationThroughHTTP:
         resp = client.post(
             "/api/v1/brokers/buyer/orders",
             json=_valid_body(
-                customer="DOC-buyer",
+                document_number=CUST_222,
                 side="BID",
                 price=100,
                 valid_until=(_NOW + timedelta(hours=2)).isoformat(),

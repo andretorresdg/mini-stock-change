@@ -3,11 +3,10 @@
 import pytest
 
 from mini_exchange.orderbook import MatchingEngine, OrderStatus, Side
+from tests.customer_documents import CUST_111, CUST_222, CUST_SHARED
 
 SYMBOL = "AAPL"
 PRICE_10 = 1_000
-DOC_SAME = "CUST-123"
-DOC_OTHER = "CUST-456"
 
 
 @pytest.fixture
@@ -21,19 +20,19 @@ class TestSelfTradeBlockedSameDocument:
     def test_ask_then_bid_same_document_no_trade(self, engine: MatchingEngine) -> None:
         engine.submit_limit_order(
             SYMBOL,
-            "broker-a",
+            "BROKER-ALPHA",
             Side.SELL,
             PRICE_10,
             100,
-            document_number=DOC_SAME,
+            document_number=CUST_SHARED,
         )
         report = engine.submit_limit_order(
             SYMBOL,
-            "broker-b",
+            "BROKER-BETA",
             Side.BUY,
             PRICE_10,
             100,
-            document_number=DOC_SAME,
+            document_number=CUST_SHARED,
         )
 
         assert len(report.trades) == 0
@@ -42,19 +41,19 @@ class TestSelfTradeBlockedSameDocument:
     def test_bid_then_ask_same_document_no_trade(self, engine: MatchingEngine) -> None:
         engine.submit_limit_order(
             SYMBOL,
-            "broker-a",
+            "BROKER-ALPHA",
             Side.BUY,
             PRICE_10,
             100,
-            document_number=DOC_SAME,
+            document_number=CUST_SHARED,
         )
         report = engine.submit_limit_order(
             SYMBOL,
-            "broker-b",
+            "BROKER-BETA",
             Side.SELL,
             PRICE_10,
             100,
-            document_number=DOC_SAME,
+            document_number=CUST_SHARED,
         )
 
         assert len(report.trades) == 0
@@ -63,21 +62,21 @@ class TestSelfTradeBlockedSameDocument:
     def test_both_orders_remain_on_book(self, engine: MatchingEngine) -> None:
         engine.submit_limit_order(
             SYMBOL,
-            "broker-a",
+            "BROKER-ALPHA",
             Side.SELL,
             PRICE_10,
             100,
             order_id="ask-1",
-            document_number=DOC_SAME,
+            document_number=CUST_SHARED,
         )
         engine.submit_limit_order(
             SYMBOL,
-            "broker-b",
+            "BROKER-BETA",
             Side.BUY,
             PRICE_10,
             100,
             order_id="bid-1",
-            document_number=DOC_SAME,
+            document_number=CUST_SHARED,
         )
 
         snap = engine.snapshot(SYMBOL)
@@ -91,23 +90,45 @@ class TestDifferentDocumentsMatchNormally:
     def test_different_documents_execute(self, engine: MatchingEngine) -> None:
         engine.submit_limit_order(
             SYMBOL,
-            "broker-a",
+            "BROKER-ALPHA",
             Side.SELL,
             PRICE_10,
             100,
-            document_number=DOC_SAME,
+            document_number=CUST_111,
         )
         report = engine.submit_limit_order(
             SYMBOL,
-            "broker-b",
+            "BROKER-BETA",
             Side.BUY,
             PRICE_10,
             100,
-            document_number=DOC_OTHER,
+            document_number=CUST_222,
         )
 
         assert len(report.trades) == 1
         assert report.accepted_order.status == OrderStatus.FILLED
+
+    def test_same_broker_different_documents_may_trade(
+        self, engine: MatchingEngine
+    ) -> None:
+        engine.submit_limit_order(
+            SYMBOL,
+            "BROKER-ALPHA",
+            Side.SELL,
+            PRICE_10,
+            100,
+            document_number=CUST_111,
+        )
+        report = engine.submit_limit_order(
+            SYMBOL,
+            "BROKER-ALPHA",
+            Side.BUY,
+            PRICE_10,
+            100,
+            document_number=CUST_222,
+        )
+
+        assert len(report.trades) == 1
 
 
 class TestSelfTradeSkippedForNextEligibleCounterparty:
@@ -118,29 +139,29 @@ class TestSelfTradeSkippedForNextEligibleCounterparty:
     ) -> None:
         engine.submit_limit_order(
             SYMBOL,
-            "broker-a",
+            "BROKER-ALPHA",
             Side.SELL,
             PRICE_10,
             100,
             order_id="ask-self",
-            document_number=DOC_SAME,
+            document_number=CUST_SHARED,
         )
         engine.submit_limit_order(
             SYMBOL,
-            "broker-b",
+            "BROKER-BETA",
             Side.SELL,
             PRICE_10,
             100,
             order_id="ask-other",
-            document_number=DOC_OTHER,
+            document_number=CUST_222,
         )
         report = engine.submit_limit_order(
             SYMBOL,
-            "broker-c",
+            "BROKER-C",
             Side.BUY,
             PRICE_10,
             100,
-            document_number=DOC_SAME,
+            document_number=CUST_SHARED,
         )
 
         assert len(report.trades) == 1
@@ -156,29 +177,29 @@ class TestSelfTradeSkippedForNextEligibleCounterparty:
     ) -> None:
         engine.submit_limit_order(
             SYMBOL,
-            "broker-a",
+            "BROKER-ALPHA",
             Side.SELL,
             PRICE_10,
             50,
             order_id="ask-self",
-            document_number=DOC_SAME,
+            document_number=CUST_SHARED,
         )
         engine.submit_limit_order(
             SYMBOL,
-            "broker-b",
+            "BROKER-BETA",
             Side.SELL,
             PRICE_10,
             50,
             order_id="ask-other",
-            document_number=DOC_OTHER,
+            document_number=CUST_222,
         )
         report = engine.submit_limit_order(
             SYMBOL,
-            "broker-c",
+            "BROKER-C",
             Side.BUY,
             PRICE_10,
             80,
-            document_number=DOC_SAME,
+            document_number=CUST_SHARED,
         )
 
         assert len(report.trades) == 1

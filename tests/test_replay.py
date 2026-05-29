@@ -1,6 +1,7 @@
 """Deterministic replay regression tests for the order book."""
 
 from mini_exchange.orderbook import MatchingEngine, OrderBook, OrderStatus, Side
+from tests.customer_documents import doc_for
 
 Command = tuple[str, ...]
 
@@ -43,6 +44,7 @@ def apply_commands(book: OrderBook, commands: list[Command]) -> None:
                 price=int(price),
                 quantity=int(qty),
                 order_id=oid,
+                document_number=doc_for(broker),
             )
         elif cmd[0] == "cancel":
             book.cancel_order(cmd[1])
@@ -153,7 +155,13 @@ class TestDeterministicEngineReplay:
                     _, broker, side_str, price, qty, oid = cmd
                     side = Side.BUY if side_str == "BUY" else Side.SELL
                     eng.submit_limit_order(
-                        "AAPL", broker, side, int(price), int(qty), oid
+                        "AAPL",
+                        broker,
+                        side,
+                        int(price),
+                        int(qty),
+                        oid,
+                        document_number=doc_for(broker),
                     )
                 elif cmd[0] == "cancel":
                     eng.cancel_order("AAPL", cmd[1])
@@ -162,7 +170,13 @@ class TestDeterministicEngineReplay:
                     _, broker, side_str, price, qty, oid = cmd
                     side = Side.BUY if side_str == "BUY" else Side.SELL
                     eng.submit_limit_order(
-                        "GOOG", broker, side, int(price), int(qty), oid
+                        "GOOG",
+                        broker,
+                        side,
+                        int(price),
+                        int(qty),
+                        oid,
+                        document_number=doc_for(broker),
                     )
                 elif cmd[0] == "cancel":
                     eng.cancel_order("GOOG", cmd[1])

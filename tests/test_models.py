@@ -12,7 +12,7 @@ def make_order(**kwargs: object) -> Order:
     defaults: dict[str, object] = {
         "order_id": "O1",
         "broker_id": "B1",
-        "document_number": "DOC-B1",
+        "document_number": "11111111100",
         "symbol": "AAPL",
         "side": Side.BUY,
         "price": 100,

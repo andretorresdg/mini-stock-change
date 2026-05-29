@@ -8,6 +8,7 @@ from mini_exchange.order_gateway.errors import IdempotencyConflictError
 from mini_exchange.order_gateway.models import GatewaySubmitOrder, SubmitOrderCommand
 from mini_exchange.order_gateway.service import OrderGatewayService
 from mini_exchange.orderbook.models import Side
+from tests.customer_documents import doc_for
 
 _NOW = datetime(2030, 6, 15, 12, 0, 0, tzinfo=UTC)
 _FUTURE = _NOW + timedelta(hours=1)
@@ -29,6 +30,7 @@ def _service(clock: _MutableClock | None = None) -> OrderGatewayService:
 def _request(
     client_order_id: str | None = "c1",
     broker_id: str = "broker1",
+    document_number: str | None = None,
     price: int = 100,
     quantity: int = 10,
     symbol: str = "AAPL",
@@ -36,7 +38,9 @@ def _request(
 ) -> GatewaySubmitOrder:
     defaults = {
         "broker_id": broker_id,
-        "document_number": f"DOC-{broker_id}",
+        "document_number": document_number
+        if document_number is not None
+        else doc_for(broker_id),
         "client_order_id": client_order_id,
         "side": Side.BUY,
         "valid_until": _FUTURE,

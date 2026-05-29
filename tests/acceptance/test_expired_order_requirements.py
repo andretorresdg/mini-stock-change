@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from mini_exchange.api.app import create_app
 from mini_exchange.order_gateway.service import OrderGatewayService
+from tests.customer_documents import doc_for
 
 _NOW = datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
 
@@ -45,9 +46,16 @@ def _make_client(clock: _MutableClock) -> TestClient:
     return TestClient(create_app(order_gateway=svc))
 
 
-def _body(*, broker: str = "default", **overrides: object) -> dict[str, object]:
+def _body(
+    *,
+    broker: str = "default",
+    document_number: str | None = None,
+    **overrides: object,
+) -> dict[str, object]:
     body: dict[str, object] = {
-        "document_number": f"DOC-{broker}",
+        "document_number": document_number
+        if document_number is not None
+        else doc_for(broker),
         "side": "ASK",
         "valid_until": _iso(_EXPIRE_IN_2H),
         "symbol": "AAPL",

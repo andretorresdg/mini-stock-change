@@ -27,7 +27,7 @@ const OPEN_ORDER: OrderResponse = {
   order_id: "AAPL-O-1",
   broker_id: "broker1",
   client_order_id: null,
-  document_number: "DOC-001",
+  document_number: "11111111100",
   side: "ASK",
   symbol: "AAPL",
   price: 15000,
@@ -343,7 +343,7 @@ describe("OrderLookupForm – order details", () => {
     fillForm();
     await submitLookup();
     await waitFor(() => {
-      expect(screen.getByTestId("detail-document")).toHaveTextContent("DOC-001");
+      expect(screen.getByTestId("detail-document")).toHaveTextContent("11111111100");
     });
   });
 

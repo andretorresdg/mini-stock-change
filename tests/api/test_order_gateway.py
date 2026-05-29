@@ -13,6 +13,7 @@ from mini_exchange.api.services.order_gateway import (
     OrderGatewayService,
     OrderNotFoundError,
 )
+from tests.customer_documents import CUST_111, CUST_222
 
 
 def _fake_clock(
@@ -27,9 +28,11 @@ def _fake_clock(
     return clock
 
 
-def _make_request(*, customer: str = "DOC-1", **kwargs: object) -> SubmitOrderRequest:
+def _make_request(
+    *, document_number: str = CUST_111, **kwargs: object
+) -> SubmitOrderRequest:
     defaults: dict[str, object] = {
-        "document_number": customer,
+        "document_number": document_number,
         "side": "BID",
         "valid_until": "2030-01-01T00:00:00Z",
         "symbol": "AAPL",
@@ -66,9 +69,9 @@ class TestSubmitAsk:
 class TestPriceGapMatch:
     def test_execution_price_is_seller_price(self) -> None:
         svc = OrderGatewayService(clock=_fake_clock())
-        sell_req = _make_request(side="ASK", price=95, customer="DOC-SELLER")
+        sell_req = _make_request(side="ASK", price=95, document_number=CUST_111)
         svc.submit_order("seller", sell_req)
-        buy_req = _make_request(side="BID", price=100, customer="DOC-BUYER")
+        buy_req = _make_request(side="BID", price=100, document_number=CUST_222)
         resp = svc.submit_order("buyer", buy_req)
         assert len(resp.trades) == 1
         assert resp.trades[0].price == 95
@@ -79,10 +82,12 @@ class TestPartialFill:
     def test_partial_fill_response(self) -> None:
         svc = OrderGatewayService(clock=_fake_clock())
         sell_req = _make_request(
-            side="ASK", price=100, quantity=20, customer="DOC-SELLER"
+            side="ASK", price=100, quantity=20, document_number=CUST_111
         )
         svc.submit_order("seller", sell_req)
-        buy_req = _make_request(side="BID", price=100, quantity=5, customer="DOC-BUYER")
+        buy_req = _make_request(
+            side="BID", price=100, quantity=5, document_number=CUST_222
+        )
         resp = svc.submit_order("buyer", buy_req)
         assert resp.status == ApiOrderStatus.FILLED
         assert resp.filled_quantity == 5
@@ -103,10 +108,10 @@ class TestGetOrder:
     def test_get_order_after_full_match(self) -> None:
         svc = OrderGatewayService(clock=_fake_clock())
         svc.submit_order(
-            "seller", _make_request(side="ASK", price=100, customer="DOC-SELLER")
+            "seller", _make_request(side="ASK", price=100, document_number=CUST_111)
         )
         svc.submit_order(
-            "buyer", _make_request(side="BID", price=100, customer="DOC-BUYER")
+            "buyer", _make_request(side="BID", price=100, document_number=CUST_222)
         )
         resp = svc.get_order("seller", "AAPL-1")
         assert resp.status == ApiOrderStatus.FILLED
@@ -114,10 +119,10 @@ class TestGetOrder:
     def test_get_order_includes_trades(self) -> None:
         svc = OrderGatewayService(clock=_fake_clock())
         svc.submit_order(
-            "seller", _make_request(side="ASK", price=100, customer="DOC-SELLER")
+            "seller", _make_request(side="ASK", price=100, document_number=CUST_111)
         )
         svc.submit_order(
-            "buyer", _make_request(side="BID", price=100, customer="DOC-BUYER")
+            "buyer", _make_request(side="BID", price=100, document_number=CUST_222)
         )
         resp = svc.get_order("buyer", "AAPL-2")
         assert len(resp.trades) == 1
@@ -197,11 +202,11 @@ class TestIdempotencyRetry:
     def test_retry_does_not_create_additional_trades(self) -> None:
         svc = OrderGatewayService(clock=_fake_clock())
         sell = _make_request(
-            side="ASK", price=100, client_order_id="s1", customer="DOC-SELLER"
+            side="ASK", price=100, client_order_id="s1", document_number=CUST_111
         )
         svc.submit_order("seller", sell)
         buy = _make_request(
-            side="BID", price=100, client_order_id="b1", customer="DOC-BUYER"
+            side="BID", price=100, client_order_id="b1", document_number=CUST_222
         )
         resp1 = svc.submit_order("buyer", buy)
         resp2 = svc.submit_order("buyer", buy)
@@ -315,10 +320,13 @@ class TestFilledRemainsFilledAfterExpiry:
         svc = OrderGatewayService(clock=clock)
         valid = datetime(2025, 1, 1, 1, 0, 0, tzinfo=UTC)
         ask = _make_request(
-            side="ASK", price=100, valid_until=valid.isoformat(), customer="DOC-SELLER"
+            side="ASK",
+            price=100,
+            valid_until=valid.isoformat(),
+            document_number=CUST_111,
         )
         svc.submit_order("seller", ask)
-        bid = _make_request(side="BID", price=100, customer="DOC-BUYER")
+        bid = _make_request(side="BID", price=100, document_number=CUST_222)
         svc.submit_order("buyer", bid)
         clock.advance(timedelta(hours=2))
         resp = svc.get_order("seller", "AAPL-1")
@@ -335,10 +343,10 @@ class TestPartiallyFilledExpires:
             price=100,
             quantity=20,
             valid_until=valid.isoformat(),
-            customer="DOC-SELLER",
+            document_number=CUST_111,
         )
         svc.submit_order("seller", ask)
-        bid = _make_request(side="BID", price=100, quantity=5, customer="DOC-BUYER")
+        bid = _make_request(side="BID", price=100, quantity=5, document_number=CUST_222)
         svc.submit_order("buyer", bid)
         resp_before = svc.get_order("seller", "AAPL-1")
         assert resp_before.status == ApiOrderStatus.PARTIALLY_FILLED

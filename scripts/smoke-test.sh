@@ -16,7 +16,7 @@ curl -sf "${WEB_BASE}/" -o /dev/null
 echo "OK  GET ${WEB_BASE}/ (web UI)"
 
 ORDER_BODY='{
-  "document_number": "DOC-SMOKE",
+  "document_number": "11111111100",
   "side": "ASK",
   "valid_until": null,
   "symbol": "SMOK",

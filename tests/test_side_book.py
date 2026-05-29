@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from mini_exchange.orderbook import Order, OrderStatus, Side, SideBook
+from tests.customer_documents import CUST_111, CUST_222, CUST_SHARED
 
 
 def make_order(
@@ -19,7 +20,7 @@ def make_order(
     return Order(
         order_id=order_id,
         broker_id="B1",
-        document_number="DOC-B1",
+        document_number=CUST_111,
         symbol="AAPL",
         side=side,
         price=price,
@@ -216,18 +217,18 @@ class TestFindMatchableOrder:
             sequence=1,
             order_id="O1",
         )
-        object.__setattr__(self_trade, "document_number", "DOC-SAME")
+        object.__setattr__(self_trade, "document_number", CUST_SHARED)
         other = make_order(
             side=Side.SELL,
             price=100,
             sequence=2,
             order_id="O2",
         )
-        object.__setattr__(other, "document_number", "DOC-OTHER")
+        object.__setattr__(other, "document_number", CUST_222)
         book.add(self_trade)
         book.add(other)
         incoming = make_order(side=Side.BUY, price=100, sequence=3, order_id="B1")
-        object.__setattr__(incoming, "document_number", "DOC-SAME")
+        object.__setattr__(incoming, "document_number", CUST_SHARED)
         match = book.find_matchable_order(incoming)
         assert match is not None
         assert match.order_id == "O2"
@@ -250,10 +251,10 @@ class TestFindMatchableOrder:
         o2.cancel()
         book._levels[100] = deque([o1, o2])
         matchable = make_order(side=Side.SELL, price=99, sequence=3, order_id="O3")
-        object.__setattr__(matchable, "document_number", "DOC-SELLER")
+        object.__setattr__(matchable, "document_number", CUST_111)
         book._levels[99] = deque([matchable])
         incoming = make_order(side=Side.BUY, price=100, sequence=4, order_id="B1")
-        object.__setattr__(incoming, "document_number", "DOC-BUYER")
+        object.__setattr__(incoming, "document_number", CUST_222)
         found = book.find_matchable_order(incoming)
         assert found is not None
         assert found.order_id == "O3"
@@ -272,12 +273,12 @@ class TestFindMatchableOrder:
         book = SideBook(Side.SELL)
         o1 = make_order(side=Side.SELL, sequence=1, order_id="O1")
         o2 = make_order(side=Side.SELL, sequence=2, order_id="O2")
-        object.__setattr__(o1, "document_number", "DOC-SAME")
-        object.__setattr__(o2, "document_number", "DOC-SAME")
+        object.__setattr__(o1, "document_number", CUST_SHARED)
+        object.__setattr__(o2, "document_number", CUST_SHARED)
         book.add(o1)
         book.add(o2)
         incoming = make_order(side=Side.BUY, sequence=3, order_id="B1")
-        object.__setattr__(incoming, "document_number", "DOC-SAME")
+        object.__setattr__(incoming, "document_number", CUST_SHARED)
         assert book.find_matchable_order(incoming) is None
 
     def test_stale_level_with_no_active_orders_is_skipped(self) -> None:
@@ -299,11 +300,11 @@ class TestFindMatchableOrder:
         book = SideBook(Side.SELL)
         self_trade = make_order(side=Side.SELL, price=100, sequence=1, order_id="O1")
         other = make_order(side=Side.SELL, price=100, sequence=2, order_id="O2")
-        object.__setattr__(self_trade, "document_number", "DOC-SAME")
-        object.__setattr__(other, "document_number", "DOC-OTHER")
+        object.__setattr__(self_trade, "document_number", CUST_SHARED)
+        object.__setattr__(other, "document_number", CUST_222)
         book.add(self_trade)
         book.add(other)
         object.__setattr__(other, "price", 150)
         incoming = make_order(side=Side.BUY, price=100, sequence=3, order_id="B1")
-        object.__setattr__(incoming, "document_number", "DOC-SAME")
+        object.__setattr__(incoming, "document_number", CUST_SHARED)
         assert book.find_matchable_order(incoming) is None
